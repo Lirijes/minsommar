@@ -1,7 +1,14 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { addChildrenToFamily, createFamily, type NewChild } from "@/lib/db";
+import {
+  addChildrenToFamily,
+  addFamilyMember,
+  createFamily,
+  fetchMyFamilyIds,
+  type NewChild,
+} from "@/lib/db";
 import { getCurrentFamilyId, setCurrentFamilyId } from "@/lib/family";
+import { useSession } from "@/lib/auth";
 import { Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { useEffect, useState } from "react";
@@ -18,11 +25,32 @@ type ChildDraft = { name: string; emoji: string };
 function OnboardingPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const { session, loading } = useSession();
 
-  // If a family is already set up, skip onboarding.
+  // Family already set up → skip onboarding. Otherwise parents must be logged
+  // in; if a logged-in parent already has a family (e.g. on another device),
+  // adopt it instead of onboarding again.
   useEffect(() => {
-    if (getCurrentFamilyId()) navigate({ to: "/", replace: true });
-  }, [navigate]);
+    if (getCurrentFamilyId()) {
+      navigate({ to: "/", replace: true });
+      return;
+    }
+    if (loading) return;
+    if (!session) {
+      navigate({ to: "/login", replace: true });
+      return;
+    }
+    let active = true;
+    fetchMyFamilyIds().then((ids) => {
+      if (active && ids.length > 0) {
+        setCurrentFamilyId(ids[0]);
+        navigate({ to: "/", replace: true });
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [navigate, loading, session]);
 
   const [step, setStep] = useState<1 | 2>(1);
   const [familyName, setFamilyName] = useState("");
@@ -38,6 +66,8 @@ function OnboardingPage() {
   const create = useMutation({
     mutationFn: async () => {
       const familyId = await createFamily(familyName.trim());
+      // Link this family to the signed-in parent.
+      if (session?.user) await addFamilyMember(familyId, session.user.id);
       const payload: NewChild[] = namedChildren.map((c, i) => ({
         name: c.name.trim(),
         emoji: c.emoji.trim() || "🙂",

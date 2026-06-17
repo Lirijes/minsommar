@@ -149,6 +149,98 @@ export async function deleteChild(id: string) {
   if (error) throw error;
 }
 
+// ---------------------------------------------------------------------------
+// Auth: family membership + secure child-access tokens
+// ---------------------------------------------------------------------------
+
+export type FamilyAccessToken = {
+  id: string;
+  family_id: string;
+  token: string;
+  created_at: string;
+  revoked_at: string | null;
+  last_used_at: string | null;
+};
+
+// Link the signed-in parent to a family (RLS allows adding yourself).
+export async function addFamilyMember(familyId: string, userId: string) {
+  const { error } = await supabase
+    .from("family_members")
+    .upsert({ family_id: familyId, user_id: userId }, { onConflict: "family_id,user_id" });
+  if (error) throw error;
+}
+
+export async function fetchMyFamilyIds(): Promise<string[]> {
+  const { data, error } = await supabase.from("family_members").select("family_id");
+  if (error) throw error;
+  return (data ?? []).map((r) => r.family_id);
+}
+
+// Backfill/claim: ensure the signed-in parent is a member of `familyId`.
+// Returns true if they are (now) a member. Claiming only succeeds for a
+// member-less family (pre-auth families or one just created); if the family is
+// already owned by someone else the insert is blocked by RLS and we return false.
+export async function ensureFamilyMembership(
+  familyId: string,
+  userId: string,
+): Promise<boolean> {
+  const mine = await fetchMyFamilyIds();
+  if (mine.includes(familyId)) return true;
+  try {
+    await addFamilyMember(familyId, userId);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function fetchActiveFamilyToken(
+  familyId: string,
+): Promise<FamilyAccessToken | null> {
+  const { data, error } = await supabase
+    .from("family_access_tokens")
+    .select("*")
+    .eq("family_id", familyId)
+    .is("revoked_at", null)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+// 256-bit cryptographically-random token, base64url-encoded.
+function generateAccessToken(): string {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  let bin = "";
+  bytes.forEach((b) => (bin += String.fromCharCode(b)));
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+// Create a fresh token and revoke any previous active ones (old links die).
+export async function createFamilyToken(familyId: string): Promise<string> {
+  const token = generateAccessToken();
+  const { error: revokeErr } = await supabase
+    .from("family_access_tokens")
+    .update({ revoked_at: new Date().toISOString() })
+    .eq("family_id", familyId)
+    .is("revoked_at", null);
+  if (revokeErr) throw revokeErr;
+  const { error } = await supabase
+    .from("family_access_tokens")
+    .insert({ family_id: familyId, token });
+  if (error) throw error;
+  return token;
+}
+
+// Child redemption via the SECURITY DEFINER RPC. Returns family_id or null.
+export async function redeemFamilyToken(token: string): Promise<string | null> {
+  const { data, error } = await supabase.rpc("redeem_family_token", { p_token: token });
+  if (error) throw error;
+  return (data as string | null) ?? null;
+}
+
 export async function fetchCategories(): Promise<Category[]> {
   const { data, error } = await supabase.from("categories").select("*").order("sort_order");
   if (error) throw error;

@@ -1,15 +1,19 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   addActivity,
   addChild,
+  createFamilyToken,
   deleteActivity,
   deleteChild,
+  ensureFamilyMembership,
+  fetchActiveFamilyToken,
   fetchActivities,
   fetchCategories,
   fetchChildren,
   fetchCompletionsForDate,
   fetchFamily,
+  fetchMyFamilyIds,
   todayDate,
   updateActivity,
   updateChild,
@@ -18,8 +22,10 @@ import {
   type Activity,
   type Child,
 } from "@/lib/db";
-import { getCurrentFamilyId } from "@/lib/family";
-import { ArrowLeft, Pencil, Plus, Trash2, X } from "lucide-react";
+import { getCurrentFamilyId, setCurrentFamilyId } from "@/lib/family";
+import { useSession, signOut } from "@/lib/auth";
+import { ArrowLeft, Copy, LogOut, Pencil, Plus, RefreshCw, Trash2, X } from "lucide-react";
+import { QRCodeSVG } from "qrcode.react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -32,13 +38,55 @@ export const Route = createFileRoute("/parent")({
 
 function ParentPage() {
   const date = todayDate();
+  const navigate = useNavigate();
+  const qc = useQueryClient();
+  const { session, loading } = useSession();
   // Active family id (client-only; resolved after mount to avoid SSR mismatch).
   const [familyId, setFamilyId] = useState<string | null>(null);
-  useEffect(() => setFamilyId(getCurrentFamilyId()), []);
+
+  // Parent view requires login.
+  useEffect(() => {
+    if (!loading && !session) navigate({ to: "/login", replace: true });
+  }, [loading, session, navigate]);
+
+  // Resolve the active family: prefer localStorage, otherwise adopt the parent's
+  // family from membership (multi-device). Then backfill/claim membership for
+  // pre-auth families so token administration works.
+  useEffect(() => {
+    if (!session?.user) return;
+    let active = true;
+    (async () => {
+      let id = getCurrentFamilyId();
+      if (!id) {
+        const ids = await fetchMyFamilyIds();
+        if (ids.length > 0) {
+          id = ids[0];
+          setCurrentFamilyId(id);
+        }
+      }
+      if (!active) return;
+      setFamilyId(id);
+      if (id) {
+        const ok = await ensureFamilyMembership(id, session.user.id);
+        if (ok && active) qc.invalidateQueries({ queryKey: ["family-token", id] });
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [session, qc]);
 
   const childrenQ = useQuery({ queryKey: ["children"], queryFn: fetchChildren });
   const catsQ = useQuery({ queryKey: ["categories"], queryFn: fetchCategories });
   const actsQ = useQuery({ queryKey: ["activities"], queryFn: fetchActivities });
+
+  if (loading || !session) {
+    return (
+      <main className="mx-auto flex min-h-screen max-w-md items-center justify-center px-5">
+        <div className="h-12 w-12 animate-pulse rounded-full bg-white/70" />
+      </main>
+    );
+  }
 
   return (
     <main className="mx-auto min-h-screen max-w-md px-5 pb-10 pt-6">
@@ -46,10 +94,24 @@ function ParentPage() {
         <Link to="/" className="grid h-11 w-11 place-items-center rounded-full bg-white/80 shadow-sm">
           <ArrowLeft className="h-5 w-5" />
         </Link>
-        <h1 className="text-2xl">Föräldravy</h1>
+        <h1 className="flex-1 text-2xl">Föräldravy</h1>
+        <button
+          onClick={() => signOut().then(() => navigate({ to: "/login", replace: true }))}
+          className="grid h-11 w-11 place-items-center rounded-full bg-white/80 text-muted-foreground shadow-sm"
+          aria-label="Logga ut"
+        >
+          <LogOut className="h-5 w-5" />
+        </button>
       </div>
 
       {familyId && <ManageFamily familyId={familyId} />}
+
+      {familyId && (
+        <section className="mb-8">
+          <h2 className="mb-3 text-lg">Barnens åtkomst</h2>
+          <ChildAccess familyId={familyId} />
+        </section>
+      )}
 
       {familyId && (
         <section className="mb-8">
@@ -152,6 +214,89 @@ function ManageFamily({ familyId }: { familyId: string }) {
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+// "Barnens åtkomst": show / copy / QR / regenerate the secure family link.
+function ChildAccess({ familyId }: { familyId: string }) {
+  const qc = useQueryClient();
+  const [origin, setOrigin] = useState("");
+  useEffect(() => setOrigin(window.location.origin), []);
+
+  const tokenQ = useQuery({
+    queryKey: ["family-token", familyId],
+    queryFn: () => fetchActiveFamilyToken(familyId),
+  });
+
+  const regenerate = useMutation({
+    mutationFn: () => createFamilyToken(familyId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["family-token", familyId] });
+      toast.success("Ny familjelänk skapad. Den gamla fungerar inte längre.");
+    },
+    onError: () => toast.error("Kunde inte skapa länk. Är du inloggad som förälder?"),
+  });
+
+  const token = tokenQ.data?.token;
+  const link = token && origin ? `${origin}/f/${token}` : "";
+
+  const copy = async () => {
+    if (!link) return;
+    try {
+      await navigator.clipboard.writeText(link);
+      toast.success("Länk kopierad");
+    } catch {
+      toast.error("Kunde inte kopiera");
+    }
+  };
+
+  return (
+    <div className="card-soft space-y-4 p-4">
+      <p className="text-sm text-muted-foreground">
+        Barn loggar inte in. Ge dem den här länken (eller QR-koden) så öppnas familjen direkt på
+        deras telefon.
+      </p>
+
+      {tokenQ.isLoading ? (
+        <div className="h-10 animate-pulse rounded-xl bg-muted" />
+      ) : link ? (
+        <>
+          <div className="flex gap-2">
+            <input
+              readOnly
+              value={link}
+              onFocus={(e) => e.currentTarget.select()}
+              className="flex-1 rounded-xl bg-muted px-3 py-2 text-xs outline-none"
+            />
+            <button
+              onClick={copy}
+              className="flex items-center gap-1 rounded-xl bg-primary px-3 text-xs font-semibold text-primary-foreground"
+            >
+              <Copy className="h-3.5 w-3.5" /> Kopiera
+            </button>
+          </div>
+
+          <div className="flex justify-center rounded-2xl bg-white p-4">
+            <QRCodeSVG value={link} size={160} />
+          </div>
+        </>
+      ) : (
+        <p className="text-sm text-muted-foreground">Ingen familjelänk ännu – skapa en nedan.</p>
+      )}
+
+      <button
+        onClick={() => {
+          if (!link || confirm("Skapa en ny länk? Den nuvarande slutar fungera direkt.")) {
+            regenerate.mutate();
+          }
+        }}
+        disabled={regenerate.isPending}
+        className="flex w-full items-center justify-center gap-2 rounded-full bg-white py-3 text-sm font-bold shadow-sm transition active:scale-95 disabled:opacity-50"
+      >
+        <RefreshCw className="h-4 w-4" />
+        {link ? "Skapa ny familjelänk" : "Skapa familjelänk"}
+      </button>
     </div>
   );
 }

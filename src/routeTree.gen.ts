@@ -11,7 +11,9 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as ParentRouteImport } from './routes/parent'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
+import { Route as LoginRouteImport } from './routes/login'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as FTokenRouteImport } from './routes/f.$token'
 import { Route as ChildNameRouteImport } from './routes/child.$name'
 import { Route as ChildNameIndexRouteImport } from './routes/child.$name.index'
 import { Route as ChildNameHistoryRouteImport } from './routes/child.$name.history'
@@ -29,9 +31,19 @@ const OnboardingRoute = OnboardingRouteImport.update({
   path: '/onboarding',
   getParentRoute: () => rootRouteImport,
 } as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FTokenRoute = FTokenRouteImport.update({
+  id: '/f/$token',
+  path: '/f/$token',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ChildNameRoute = ChildNameRouteImport.update({
@@ -67,9 +79,11 @@ const ChildNameBucketlistRoute = ChildNameBucketlistRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
   '/parent': typeof ParentRoute
   '/child/$name': typeof ChildNameRouteWithChildren
+  '/f/$token': typeof FTokenRoute
   '/child/$name/bucketlist': typeof ChildNameBucketlistRoute
   '/child/$name/calendar': typeof ChildNameCalendarRoute
   '/child/$name/favorites': typeof ChildNameFavoritesRoute
@@ -78,8 +92,10 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
   '/parent': typeof ParentRoute
+  '/f/$token': typeof FTokenRoute
   '/child/$name/bucketlist': typeof ChildNameBucketlistRoute
   '/child/$name/calendar': typeof ChildNameCalendarRoute
   '/child/$name/favorites': typeof ChildNameFavoritesRoute
@@ -89,9 +105,11 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
   '/parent': typeof ParentRoute
   '/child/$name': typeof ChildNameRouteWithChildren
+  '/f/$token': typeof FTokenRoute
   '/child/$name/bucketlist': typeof ChildNameBucketlistRoute
   '/child/$name/calendar': typeof ChildNameCalendarRoute
   '/child/$name/favorites': typeof ChildNameFavoritesRoute
@@ -102,9 +120,11 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/login'
     | '/onboarding'
     | '/parent'
     | '/child/$name'
+    | '/f/$token'
     | '/child/$name/bucketlist'
     | '/child/$name/calendar'
     | '/child/$name/favorites'
@@ -113,8 +133,10 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/login'
     | '/onboarding'
     | '/parent'
+    | '/f/$token'
     | '/child/$name/bucketlist'
     | '/child/$name/calendar'
     | '/child/$name/favorites'
@@ -123,9 +145,11 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/login'
     | '/onboarding'
     | '/parent'
     | '/child/$name'
+    | '/f/$token'
     | '/child/$name/bucketlist'
     | '/child/$name/calendar'
     | '/child/$name/favorites'
@@ -135,9 +159,11 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  LoginRoute: typeof LoginRoute
   OnboardingRoute: typeof OnboardingRoute
   ParentRoute: typeof ParentRoute
   ChildNameRoute: typeof ChildNameRouteWithChildren
+  FTokenRoute: typeof FTokenRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -156,11 +182,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OnboardingRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/f/$token': {
+      id: '/f/$token'
+      path: '/f/$token'
+      fullPath: '/f/$token'
+      preLoaderRoute: typeof FTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/child/$name': {
@@ -230,9 +270,11 @@ const ChildNameRouteWithChildren = ChildNameRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  LoginRoute: LoginRoute,
   OnboardingRoute: OnboardingRoute,
   ParentRoute: ParentRoute,
   ChildNameRoute: ChildNameRouteWithChildren,
+  FTokenRoute: FTokenRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

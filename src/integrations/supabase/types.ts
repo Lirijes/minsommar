@@ -135,6 +135,91 @@ export type Database = {
         }
         Relationships: []
       }
+      family_access_tokens: {
+        Row: {
+          created_at: string
+          family_id: string
+          id: string
+          last_used_at: string | null
+          revoked_at: string | null
+          token: string
+        }
+        Insert: {
+          created_at?: string
+          family_id: string
+          id?: string
+          last_used_at?: string | null
+          revoked_at?: string | null
+          token: string
+        }
+        Update: {
+          created_at?: string
+          family_id?: string
+          id?: string
+          last_used_at?: string | null
+          revoked_at?: string | null
+          token?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "family_access_tokens_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "families"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      family_members: {
+        Row: {
+          created_at: string
+          family_id: string
+          id: string
+          role: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          family_id: string
+          id?: string
+          role?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          family_id?: string
+          id?: string
+          role?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "family_members_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "families"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          email: string | null
+          id: string
+        }
+        Insert: {
+          created_at?: string
+          email?: string | null
+          id: string
+        }
+        Update: {
+          created_at?: string
+          email?: string | null
+          id?: string
+        }
+        Relationships: []
+      }
       bucket_items: {
         Row: {
           child_id: string
@@ -220,7 +305,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      is_family_member: {
+        Args: { p_family: string }
+        Returns: boolean
+      }
+      redeem_family_token: {
+        Args: { p_token: string }
+        Returns: string
+      }
     }
     Enums: {
       [_ in never]: never

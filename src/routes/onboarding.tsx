@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   addChildrenToFamily,
   addFamilyMember,
+  cloneCatalogForFamily,
   createFamily,
   fetchMyFamilyIds,
   type NewChild,
@@ -68,6 +69,8 @@ function OnboardingPage() {
       const familyId = await createFamily(familyName.trim());
       // Link this family to the signed-in parent.
       if (session?.user) await addFamilyMember(familyId, session.user.id);
+      // Give the family its own copy of the activity catalog.
+      await cloneCatalogForFamily(familyId);
       const payload: NewChild[] = namedChildren.map((c, i) => ({
         name: c.name.trim(),
         emoji: c.emoji.trim() || "🙂",

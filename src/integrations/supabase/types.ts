@@ -19,6 +19,7 @@ export type Database = {
           category_id: string
           created_at: string
           emoji: string
+          family_id: string | null
           id: string
           is_favorite: boolean
           name: string
@@ -29,6 +30,7 @@ export type Database = {
           category_id: string
           created_at?: string
           emoji?: string
+          family_id?: string | null
           id?: string
           is_favorite?: boolean
           name: string
@@ -39,6 +41,7 @@ export type Database = {
           category_id?: string
           created_at?: string
           emoji?: string
+          family_id?: string | null
           id?: string
           is_favorite?: boolean
           name?: string
@@ -58,6 +61,7 @@ export type Database = {
       categories: {
         Row: {
           created_at: string
+          family_id: string | null
           icon: string
           id: string
           name: string
@@ -66,6 +70,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          family_id?: string | null
           icon?: string
           id?: string
           name: string
@@ -74,6 +79,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          family_id?: string | null
           icon?: string
           id?: string
           name?: string
@@ -305,6 +311,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      clone_catalog_for_family: {
+        Args: { p_family: string }
+        Returns: undefined
+      }
       is_family_member: {
         Args: { p_family: string }
         Returns: boolean

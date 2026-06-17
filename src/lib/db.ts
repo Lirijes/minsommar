@@ -9,9 +9,18 @@ export type Child = {
   emoji: string;
   color: string;
 };
-export type Category = { id: string; name: string; slug: string; icon: string; sort_order: number };
+// categories/activities are now per-family (family_id); template rows have null.
+export type Category = {
+  id: string;
+  family_id: string | null;
+  name: string;
+  slug: string;
+  icon: string;
+  sort_order: number;
+};
 export type Activity = {
   id: string;
+  family_id: string | null;
   category_id: string;
   subcategory: string | null;
   name: string;
@@ -242,15 +251,33 @@ export async function redeemFamilyToken(token: string): Promise<string | null> {
 }
 
 export async function fetchCategories(): Promise<Category[]> {
-  const { data, error } = await supabase.from("categories").select("*").order("sort_order");
+  const familyId = getCurrentFamilyId();
+  if (!familyId) return [];
+  const { data, error } = await supabase
+    .from("categories")
+    .select("*")
+    .eq("family_id", familyId)
+    .order("sort_order");
   if (error) throw error;
   return data ?? [];
 }
 
 export async function fetchActivities(): Promise<Activity[]> {
-  const { data, error } = await supabase.from("activities").select("*").order("sort_order");
+  const familyId = getCurrentFamilyId();
+  if (!familyId) return [];
+  const { data, error } = await supabase
+    .from("activities")
+    .select("*")
+    .eq("family_id", familyId)
+    .order("sort_order");
   if (error) throw error;
   return data ?? [];
+}
+
+// Clone the template catalog into a newly created family (idempotent server-side).
+export async function cloneCatalogForFamily(familyId: string) {
+  const { error } = await supabase.rpc("clone_catalog_for_family", { p_family: familyId });
+  if (error) throw error;
 }
 
 export async function fetchCompletionsForDate(childId: string, date: string): Promise<Completion[]> {
@@ -310,7 +337,7 @@ export async function addActivity(
 ) {
   const { error } = await supabase
     .from("activities")
-    .insert({ category_id: categoryId, name, emoji: emoji || "✨", subcategory });
+    .insert({ category_id: categoryId, family_id: getCurrentFamilyId(), name, emoji: emoji || "✨", subcategory });
   if (error) throw error;
 }
 

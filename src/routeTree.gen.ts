@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as ParentRouteImport } from './routes/parent'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
+import { Route as OmSommarRouteImport } from './routes/om-sommar'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as FTokenRouteImport } from './routes/f.$token'
@@ -30,6 +31,11 @@ const ParentRoute = ParentRouteImport.update({
 const OnboardingRoute = OnboardingRouteImport.update({
   id: '/onboarding',
   path: '/onboarding',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OmSommarRoute = OmSommarRouteImport.update({
+  id: '/om-sommar',
+  path: '/om-sommar',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LoginRoute = LoginRouteImport.update({
@@ -86,6 +92,7 @@ const ChildNameBucketlistRoute = ChildNameBucketlistRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/om-sommar': typeof OmSommarRoute
   '/onboarding': typeof OnboardingRoute
   '/parent': typeof ParentRoute
   '/auth/callback': typeof AuthCallbackRoute
@@ -100,6 +107,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/om-sommar': typeof OmSommarRoute
   '/onboarding': typeof OnboardingRoute
   '/parent': typeof ParentRoute
   '/auth/callback': typeof AuthCallbackRoute
@@ -114,6 +122,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/om-sommar': typeof OmSommarRoute
   '/onboarding': typeof OnboardingRoute
   '/parent': typeof ParentRoute
   '/auth/callback': typeof AuthCallbackRoute
@@ -130,6 +139,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/login'
+    | '/om-sommar'
     | '/onboarding'
     | '/parent'
     | '/auth/callback'
@@ -144,6 +154,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/login'
+    | '/om-sommar'
     | '/onboarding'
     | '/parent'
     | '/auth/callback'
@@ -157,6 +168,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/login'
+    | '/om-sommar'
     | '/onboarding'
     | '/parent'
     | '/auth/callback'
@@ -172,6 +184,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   LoginRoute: typeof LoginRoute
+  OmSommarRoute: typeof OmSommarRoute
   OnboardingRoute: typeof OnboardingRoute
   ParentRoute: typeof ParentRoute
   AuthCallbackRoute: typeof AuthCallbackRoute
@@ -193,6 +206,13 @@ declare module '@tanstack/react-router' {
       path: '/onboarding'
       fullPath: '/onboarding'
       preLoaderRoute: typeof OnboardingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/om-sommar': {
+      id: '/om-sommar'
+      path: '/om-sommar'
+      fullPath: '/om-sommar'
+      preLoaderRoute: typeof OmSommarRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -291,6 +311,7 @@ const ChildNameRouteWithChildren = ChildNameRoute._addFileChildren(
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   LoginRoute: LoginRoute,
+  OmSommarRoute: OmSommarRoute,
   OnboardingRoute: OnboardingRoute,
   ParentRoute: ParentRoute,
   AuthCallbackRoute: AuthCallbackRoute,

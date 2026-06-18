@@ -15,6 +15,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as FTokenRouteImport } from './routes/f.$token'
 import { Route as ChildNameRouteImport } from './routes/child.$name'
+import { Route as AuthCallbackRouteImport } from './routes/auth.callback'
 import { Route as ChildNameIndexRouteImport } from './routes/child.$name.index'
 import { Route as ChildNameHistoryRouteImport } from './routes/child.$name.history'
 import { Route as ChildNameFavoritesRouteImport } from './routes/child.$name.favorites'
@@ -51,6 +52,11 @@ const ChildNameRoute = ChildNameRouteImport.update({
   path: '/child/$name',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthCallbackRoute = AuthCallbackRouteImport.update({
+  id: '/auth/callback',
+  path: '/auth/callback',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ChildNameIndexRoute = ChildNameIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -82,6 +88,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
   '/parent': typeof ParentRoute
+  '/auth/callback': typeof AuthCallbackRoute
   '/child/$name': typeof ChildNameRouteWithChildren
   '/f/$token': typeof FTokenRoute
   '/child/$name/bucketlist': typeof ChildNameBucketlistRoute
@@ -95,6 +102,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
   '/parent': typeof ParentRoute
+  '/auth/callback': typeof AuthCallbackRoute
   '/f/$token': typeof FTokenRoute
   '/child/$name/bucketlist': typeof ChildNameBucketlistRoute
   '/child/$name/calendar': typeof ChildNameCalendarRoute
@@ -108,6 +116,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
   '/parent': typeof ParentRoute
+  '/auth/callback': typeof AuthCallbackRoute
   '/child/$name': typeof ChildNameRouteWithChildren
   '/f/$token': typeof FTokenRoute
   '/child/$name/bucketlist': typeof ChildNameBucketlistRoute
@@ -123,6 +132,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/onboarding'
     | '/parent'
+    | '/auth/callback'
     | '/child/$name'
     | '/f/$token'
     | '/child/$name/bucketlist'
@@ -136,6 +146,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/onboarding'
     | '/parent'
+    | '/auth/callback'
     | '/f/$token'
     | '/child/$name/bucketlist'
     | '/child/$name/calendar'
@@ -148,6 +159,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/onboarding'
     | '/parent'
+    | '/auth/callback'
     | '/child/$name'
     | '/f/$token'
     | '/child/$name/bucketlist'
@@ -162,6 +174,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   OnboardingRoute: typeof OnboardingRoute
   ParentRoute: typeof ParentRoute
+  AuthCallbackRoute: typeof AuthCallbackRoute
   ChildNameRoute: typeof ChildNameRouteWithChildren
   FTokenRoute: typeof FTokenRoute
 }
@@ -208,6 +221,13 @@ declare module '@tanstack/react-router' {
       path: '/child/$name'
       fullPath: '/child/$name'
       preLoaderRoute: typeof ChildNameRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/auth/callback': {
+      id: '/auth/callback'
+      path: '/auth/callback'
+      fullPath: '/auth/callback'
+      preLoaderRoute: typeof AuthCallbackRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/child/$name/': {
@@ -273,6 +293,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   OnboardingRoute: OnboardingRoute,
   ParentRoute: ParentRoute,
+  AuthCallbackRoute: AuthCallbackRoute,
   ChildNameRoute: ChildNameRouteWithChildren,
   FTokenRoute: FTokenRoute,
 }

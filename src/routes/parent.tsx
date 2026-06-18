@@ -49,22 +49,17 @@ function ParentPage() {
     if (!loading && !session) navigate({ to: "/login", replace: true });
   }, [loading, session, navigate]);
 
-  // Resolve the active family: prefer localStorage, otherwise adopt the parent's
-  // family from membership (multi-device). Then backfill/claim membership for
-  // pre-auth families so token administration works.
+  // Resolve the active family from MEMBERSHIP (auth.uid()) — authoritative — and
+  // only fall back to the (user-scoped) cache for a legacy pre-auth family the
+  // parent can still claim. Then backfill/claim membership so token admin works.
   useEffect(() => {
     if (!session?.user) return;
     let active = true;
     (async () => {
-      let id = getCurrentFamilyId();
-      if (!id) {
-        const ids = await fetchMyFamilyIds();
-        if (ids.length > 0) {
-          id = ids[0];
-          setCurrentFamilyId(id);
-        }
-      }
+      const ids = await fetchMyFamilyIds();
+      let id: string | null = ids[0] ?? getCurrentFamilyId();
       if (!active) return;
+      if (id) setCurrentFamilyId(id);
       setFamilyId(id);
       if (id) {
         const ok = await ensureFamilyMembership(id, session.user.id);

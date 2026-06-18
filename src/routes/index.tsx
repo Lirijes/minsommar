@@ -36,6 +36,14 @@ function HomePage() {
   // Onboarding gate: no family set up yet → go to onboarding.
   const [ready, setReady] = useState(false);
   useEffect(() => {
+    // If an auth redirect landed here (Site URL = "/"), don't interrupt it.
+    // Hand off to the callback with the token intact (full navigation keeps the
+    // ?code / #access_token that client-side routing would otherwise drop).
+    const { search, hash } = window.location;
+    if (/(^|[?&#])(code|access_token|refresh_token|error)=/.test(search + hash)) {
+      window.location.replace(`/auth/callback${search}${hash}`);
+      return;
+    }
     if (getCurrentFamilyId()) setReady(true);
     else navigate({ to: "/onboarding", replace: true });
   }, [navigate]);

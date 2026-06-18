@@ -8,7 +8,7 @@ import {
   fetchMyFamilyIds,
   type NewChild,
 } from "@/lib/db";
-import { getCurrentFamilyId, setCurrentFamilyId } from "@/lib/family";
+import { setCurrentFamilyId } from "@/lib/family";
 import { useSession } from "@/lib/auth";
 import { Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -28,14 +28,10 @@ function OnboardingPage() {
   const qc = useQueryClient();
   const { session, loading } = useSession();
 
-  // Family already set up → skip onboarding. Otherwise parents must be logged
-  // in; if a logged-in parent already has a family (e.g. on another device),
-  // adopt it instead of onboarding again.
+  // Membership is authoritative: parents must be logged in, and if a logged-in
+  // parent already has a family (auth.uid()), adopt it instead of onboarding
+  // again. We do NOT trust a cached family here — only DB membership.
   useEffect(() => {
-    if (getCurrentFamilyId()) {
-      navigate({ to: "/", replace: true });
-      return;
-    }
     if (loading) return;
     if (!session) {
       navigate({ to: "/login", replace: true });

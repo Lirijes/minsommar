@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
+import { clearCurrentFamilyId } from "@/lib/family";
 
 // Parent auth via Supabase (magic link). Children never use this — they use a
 // family access token instead (see lib/family.ts + redeemFamilyToken).
@@ -31,7 +32,7 @@ export function useSession(): { session: Session | null; user: User | null; load
 
 export async function sendMagicLink(email: string) {
   const redirectTo =
-    typeof window !== "undefined" ? `${window.location.origin}/parent` : undefined;
+    typeof window !== "undefined" ? `${window.location.origin}/auth/callback` : undefined;
   const { error } = await supabase.auth.signInWithOtp({
     email,
     options: { emailRedirectTo: redirectTo },
@@ -40,5 +41,8 @@ export async function sendMagicLink(email: string) {
 }
 
 export async function signOut() {
+  // Clear the family cache while the session still resolves the user-scoped key,
+  // then sign out. (User-scoping already prevents cross-user reuse; this is hygiene.)
+  clearCurrentFamilyId();
   await supabase.auth.signOut();
 }

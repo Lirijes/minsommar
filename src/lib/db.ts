@@ -1,5 +1,22 @@
 import { supabase } from "@/integrations/supabase/client";
 import { getCurrentFamilyId } from "@/lib/family";
+import {
+  sfAddBucketItem,
+  sfAddBucketItems,
+  sfAddCompletion,
+  sfAllCompletions,
+  sfBucketItems,
+  sfCompletionsForDate,
+  sfDeleteBucketItem,
+  sfGetChildByName,
+  sfListActivities,
+  sfListCategories,
+  sfListChildren,
+  sfRemoveCompletion,
+  sfSetBucketItemDone,
+  sfToggleFavorite,
+  sfUpdateBucketItem,
+} from "@/lib/api/family.functions";
 
 export type Family = { id: string; name: string; created_at: string };
 export type Child = {
@@ -69,29 +86,15 @@ export function todayDate(): string {
   return `${y}-${m}-${day}`;
 }
 
+// Child-facing reads/writes go through server functions (service role, scoped
+// by the dual-context resolver). Parent management ops below stay on the authed
+// client + RLS.
 export async function fetchChildren(): Promise<Child[]> {
-  const familyId = getCurrentFamilyId();
-  if (!familyId) return [];
-  const { data, error } = await supabase
-    .from("children")
-    .select("*")
-    .eq("family_id", familyId)
-    .order("created_at");
-  if (error) throw error;
-  return data ?? [];
+  return (await sfListChildren()) as Child[];
 }
 
 export async function fetchChildByName(name: string): Promise<Child | null> {
-  const familyId = getCurrentFamilyId();
-  if (!familyId) return null;
-  const { data, error } = await supabase
-    .from("children")
-    .select("*")
-    .eq("family_id", familyId)
-    .ilike("name", name)
-    .maybeSingle();
-  if (error) throw error;
-  return data;
+  return (await sfGetChildByName({ data: { name } })) as Child | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -251,27 +254,11 @@ export async function redeemFamilyToken(token: string): Promise<string | null> {
 }
 
 export async function fetchCategories(): Promise<Category[]> {
-  const familyId = getCurrentFamilyId();
-  if (!familyId) return [];
-  const { data, error } = await supabase
-    .from("categories")
-    .select("*")
-    .eq("family_id", familyId)
-    .order("sort_order");
-  if (error) throw error;
-  return data ?? [];
+  return (await sfListCategories()) as Category[];
 }
 
 export async function fetchActivities(): Promise<Activity[]> {
-  const familyId = getCurrentFamilyId();
-  if (!familyId) return [];
-  const { data, error } = await supabase
-    .from("activities")
-    .select("*")
-    .eq("family_id", familyId)
-    .order("sort_order");
-  if (error) throw error;
-  return data ?? [];
+  return (await sfListActivities()) as Activity[];
 }
 
 // Clone the template catalog into a newly created family (idempotent server-side).
@@ -281,14 +268,7 @@ export async function cloneCatalogForFamily(familyId: string) {
 }
 
 export async function fetchCompletionsForDate(childId: string, date: string): Promise<Completion[]> {
-  const { data, error } = await supabase
-    .from("completions")
-    .select("*")
-    .eq("child_id", childId)
-    .eq("completed_date", date)
-    .order("completed_at", { ascending: false });
-  if (error) throw error;
-  return data ?? [];
+  return (await sfCompletionsForDate({ data: { childId, date } })) as Completion[];
 }
 
 export async function fetchCompletionsBetween(
@@ -307,26 +287,15 @@ export async function fetchCompletionsBetween(
 }
 
 export async function fetchAllCompletions(childId: string): Promise<Completion[]> {
-  const { data, error } = await supabase
-    .from("completions")
-    .select("*")
-    .eq("child_id", childId);
-  if (error) throw error;
-  return data ?? [];
+  return (await sfAllCompletions({ data: { childId } })) as Completion[];
 }
 
 export async function addCompletion(childId: string, activityId: string) {
-  const { error } = await supabase.from("completions").insert({
-    child_id: childId,
-    activity_id: activityId,
-    completed_date: todayDate(),
-  });
-  if (error) throw error;
+  await sfAddCompletion({ data: { childId, activityId } });
 }
 
 export async function removeCompletion(completionId: string) {
-  const { error } = await supabase.from("completions").delete().eq("id", completionId);
-  if (error) throw error;
+  await sfRemoveCompletion({ data: { id: completionId } });
 }
 
 export async function addActivity(
@@ -342,8 +311,7 @@ export async function addActivity(
 }
 
 export async function toggleFavorite(id: string, value: boolean) {
-  const { error } = await supabase.from("activities").update({ is_favorite: value }).eq("id", id);
-  if (error) throw error;
+  await sfToggleFavorite({ data: { activityId: id, value } });
 }
 
 export async function updateActivity(id: string, name: string, emoji: string) {
@@ -380,22 +348,11 @@ export function randomCheer(name?: string) {
 // ---------------------------------------------------------------------------
 
 export async function fetchBucketItems(childId: string): Promise<BucketItem[]> {
-  const { data, error } = await supabase
-    .from("bucket_items")
-    .select("*")
-    .eq("child_id", childId)
-    .order("done", { ascending: true })
-    .order("sort_order", { ascending: true })
-    .order("created_at", { ascending: true });
-  if (error) throw error;
-  return data ?? [];
+  return (await sfBucketItems({ data: { childId } })) as BucketItem[];
 }
 
 export async function addBucketItem(childId: string, title: string, emoji: string) {
-  const { error } = await supabase
-    .from("bucket_items")
-    .insert({ child_id: childId, title, emoji: emoji || "🏖️" });
-  if (error) throw error;
+  await sfAddBucketItem({ data: { childId, title, emoji } });
 }
 
 // Insert several goals at once (used by the first-time welcome flow).
@@ -403,37 +360,19 @@ export async function addBucketItems(
   childId: string,
   items: { title: string; emoji: string }[],
 ) {
-  if (items.length === 0) return;
-  const { error } = await supabase.from("bucket_items").insert(
-    items.map((it, i) => ({
-      child_id: childId,
-      title: it.title,
-      emoji: it.emoji || "🏖️",
-      sort_order: i,
-    })),
-  );
-  if (error) throw error;
+  await sfAddBucketItems({ data: { childId, items } });
 }
 
 export async function updateBucketItem(id: string, title: string, emoji: string) {
-  const { error } = await supabase
-    .from("bucket_items")
-    .update({ title, emoji: emoji || "🏖️" })
-    .eq("id", id);
-  if (error) throw error;
+  await sfUpdateBucketItem({ data: { id, title, emoji } });
 }
 
 export async function deleteBucketItem(id: string) {
-  const { error } = await supabase.from("bucket_items").delete().eq("id", id);
-  if (error) throw error;
+  await sfDeleteBucketItem({ data: { id } });
 }
 
 export async function setBucketItemDone(id: string, done: boolean) {
-  const { error } = await supabase
-    .from("bucket_items")
-    .update({ done, done_at: done ? new Date().toISOString() : null })
-    .eq("id", id);
-  if (error) throw error;
+  await sfSetBucketItemDone({ data: { id, done } });
 }
 
 // Library of inspiring summer goals the child can pick from.

@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { redeemFamilyToken } from "@/lib/db";
+import { startChildSession } from "@/lib/api/family.functions";
 import { setCurrentFamilyId } from "@/lib/family";
 import { useEffect, useState } from "react";
 
@@ -19,7 +19,10 @@ function FamilyLinkPage() {
     let active = true;
     (async () => {
       try {
-        const familyId = await redeemFamilyToken(token);
+        // Server validates the token and sets the signed httpOnly family cookie
+        // (the real authorization for child data). localStorage is only a
+        // client-side UI hint for routing/rendering.
+        const { familyId } = await startChildSession({ data: { token } });
         if (!active) return;
         if (familyId) {
           setCurrentFamilyId(familyId);

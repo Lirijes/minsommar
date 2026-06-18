@@ -12,14 +12,34 @@ export function useSession(): { session: Session | null; user: User | null; load
 
   useEffect(() => {
     let active = true;
-    supabase.auth.getSession().then(({ data }) => {
+    // getSession() is the authoritative initial read: it awaits client init and
+    // returns the persisted session (or null only when genuinely signed out).
+    // It only *ends* loading on resolve; a rejection (e.g. auth-lock contention)
+    // leaves loading true and we let onAuthStateChange settle it instead.
+    supabase.auth
+      .getSession()
+      .then(({ data }) => {
+        if (!active) return;
+        setSession(data.session);
+        setLoading(false);
+      })
+      .catch(() => {
+        /* transient lock/refresh error — do not flip to a null session */
+      });
+    const { data: sub } = supabase.auth.onAuthStateChange((event, s) => {
       if (!active) return;
-      setSession(data.session);
-      setLoading(false);
-    });
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => {
-      setSession(s);
-      setLoading(false);
+      if (event === "SIGNED_OUT") {
+        setSession(null);
+        setLoading(false);
+        return;
+      }
+      // Only adopt a real session. INITIAL_SESSION can be emitted as null under
+      // auth-lock contention (auth-js _emitInitialSession catch path); ignoring
+      // that transient null prevents a spurious "logged out" redirect.
+      if (s) {
+        setSession(s);
+        setLoading(false);
+      }
     });
     return () => {
       active = false;

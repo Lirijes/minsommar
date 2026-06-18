@@ -104,13 +104,14 @@ export async function fetchChildByName(name: string): Promise<Child | null> {
 export type NewChild = { name: string; emoji: string; color: string };
 
 export async function createFamily(name: string): Promise<string> {
-  const { data, error } = await supabase
-    .from("families")
-    .insert({ name })
-    .select("id")
-    .single();
+  // Generate the id client-side and insert WITHOUT select(): under strict RLS the
+  // creator isn't a member yet, so a RETURNING/SELECT would be blocked. Membership
+  // is added immediately after (addFamilyMember), which is also what makes the
+  // family selectable from then on.
+  const id = crypto.randomUUID();
+  const { error } = await supabase.from("families").insert({ id, name });
   if (error) throw error;
-  return data.id;
+  return id;
 }
 
 export async function addChildrenToFamily(familyId: string, children: NewChild[]) {

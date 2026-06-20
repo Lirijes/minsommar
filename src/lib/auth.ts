@@ -50,12 +50,14 @@ export function useSession(): { session: Session | null; user: User | null; load
   return { session, user: session?.user ?? null, loading };
 }
 
-export async function sendMagicLink(email: string) {
-  const redirectTo =
+// `redirectTo` overrides the post-login landing page (used by the invite flow to
+// return to /invite/<token> and finish accepting). Defaults to /auth/callback.
+export async function sendMagicLink(email: string, redirectTo?: string) {
+  const fallback =
     typeof window !== "undefined" ? `${window.location.origin}/auth/callback` : undefined;
   const { error } = await supabase.auth.signInWithOtp({
     email,
-    options: { emailRedirectTo: redirectTo },
+    options: { emailRedirectTo: redirectTo ?? fallback },
   });
   if (error) throw error;
 }

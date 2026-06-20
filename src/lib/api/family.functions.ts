@@ -7,9 +7,29 @@ import { z } from "zod";
 // attaches the parent's Bearer token; children rely on the signed cookie.
 
 const SERVER = () => import("@/integrations/supabase/family-session.server");
+const INVITES = () => import("@/integrations/supabase/family-invite.server");
 
 const childId = z.object({ childId: z.string().uuid() });
 const id = z.object({ id: z.string().uuid() });
+
+// --- parent invitations (owner-only; enforced server-side) ------------------
+export const sfSendFamilyInvite = createServerFn({ method: "POST" })
+  .inputValidator(z.object({ email: z.string().email(), origin: z.string().url() }))
+  .handler(async ({ data }) => {
+    await (await INVITES()).createAndSendInvite(data.email, data.origin);
+  });
+
+export const sfResendFamilyInvite = createServerFn({ method: "POST" })
+  .inputValidator(z.object({ id: z.string().uuid(), origin: z.string().url() }))
+  .handler(async ({ data }) => {
+    await (await INVITES()).resendInvite(data.id, data.origin);
+  });
+
+export const sfRevokeFamilyInvite = createServerFn({ method: "POST" })
+  .inputValidator(id)
+  .handler(async ({ data }) => {
+    await (await INVITES()).revokeInvite(data.id);
+  });
 
 export const startChildSession = createServerFn({ method: "POST" })
   .inputValidator(z.object({ token: z.string().min(1) }))

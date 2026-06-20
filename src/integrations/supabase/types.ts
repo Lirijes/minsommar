@@ -246,6 +246,53 @@ export type Database = {
           },
         ];
       };
+      family_invites: {
+        Row: {
+          accepted_at: string | null;
+          created_at: string;
+          email: string;
+          expires_at: string;
+          family_id: string;
+          id: string;
+          invited_by: string | null;
+          role: string;
+          status: string;
+          token_hash: string;
+        };
+        Insert: {
+          accepted_at?: string | null;
+          created_at?: string;
+          email: string;
+          expires_at?: string;
+          family_id: string;
+          id?: string;
+          invited_by?: string | null;
+          role?: string;
+          status?: string;
+          token_hash: string;
+        };
+        Update: {
+          accepted_at?: string | null;
+          created_at?: string;
+          email?: string;
+          expires_at?: string;
+          family_id?: string;
+          id?: string;
+          invited_by?: string | null;
+          role?: string;
+          status?: string;
+          token_hash?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "family_invites_family_id_fkey";
+            columns: ["family_id"];
+            isOneToOne: false;
+            referencedRelation: "families";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       profiles: {
         Row: {
           created_at: string;
@@ -349,17 +396,50 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
+      accept_family_invite: {
+        Args: { p_token: string };
+        Returns: string;
+      };
       clone_catalog_for_family: {
         Args: { p_family: string };
         Returns: undefined;
+      };
+      get_invite_preview: {
+        Args: { p_token: string };
+        Returns: {
+          family_name: string;
+          inviter_email: string;
+          invite_email: string;
+          status: string;
+          expired: boolean;
+        }[];
       };
       is_family_member: {
         Args: { p_family: string };
         Returns: boolean;
       };
+      is_family_owner: {
+        Args: { p_family: string };
+        Returns: boolean;
+      };
+      list_family_members: {
+        Args: { p_family: string };
+        Returns: {
+          id: string;
+          user_id: string;
+          role: string;
+          email: string | null;
+          created_at: string;
+          is_self: boolean;
+        }[];
+      };
       redeem_family_token: {
         Args: { p_token: string };
         Returns: string;
+      };
+      remove_family_member: {
+        Args: { p_member_id: string };
+        Returns: undefined;
       };
     };
     Enums: {

@@ -1,7 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
 import { fetchMyFamilyIds } from "@/lib/db";
-import { clearCurrentFamilyId, setCurrentFamilyId } from "@/lib/family";
+import { clearCurrentFamilyId, getCurrentFamilyId, setCurrentFamilyId } from "@/lib/family";
 import { useEffect, useState } from "react";
 
 export const Route = createFileRoute("/auth/callback")({
@@ -38,11 +38,14 @@ function AuthCallback() {
         setFailed(true);
         return;
       }
-      // Session is fully established. Decide where to go.
+      // Session is fully established. Decide where to go. A user may belong to
+      // several families — keep the cached active one if it's still a membership,
+      // otherwise default to any membership.
       const ids = await fetchMyFamilyIds();
       if (!active) return;
       if (ids.length > 0) {
-        setCurrentFamilyId(ids[0]);
+        const cached = getCurrentFamilyId();
+        setCurrentFamilyId(cached && ids.includes(cached) ? cached : ids[0]);
         navigate({ to: "/parent", replace: true });
       } else {
         // No family for this user → make sure no stale cache lingers.

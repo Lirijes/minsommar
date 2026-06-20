@@ -1,0 +1,1 @@
+- [Multi-parent deploy config](multi-parent-deploy-config.md) — manual steps (migration, Resend env/domain, Supabase redirect allow-list) to ship co-parent invites

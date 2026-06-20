@@ -31,6 +31,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { OneTimeNotice } from "@/components/OneTimeNotice";
 import {
   ArrowLeft,
   ClipboardList,
@@ -123,6 +124,19 @@ function ParentPage() {
           <LogOut className="h-5 w-5" />
         </button>
       </div>
+
+      <OneTimeNotice
+        id="whats-new-v1"
+        userId={session.user.id}
+        title="Nyhet!"
+        body="Nu kan du aktivera ett valfritt poängsystem och skapa egna belöningar som barnen kan spara till."
+        actionLabel="Kolla in funktionen"
+        onAction={() =>
+          document
+            .getElementById("points-toggle")
+            ?.scrollIntoView({ behavior: "smooth", block: "center" })
+        }
+      />
 
       {familyId && <ManageFamily familyId={familyId} />}
 
@@ -284,7 +298,10 @@ function ManageFamily({ familyId }: { familyId: string }) {
         </div>
       )}
 
-      <div className="mt-4 flex items-center gap-3 border-t border-border/60 pt-4">
+      <div
+        id="points-toggle"
+        className="mt-4 flex items-center gap-3 border-t border-border/60 pt-4"
+      >
         <div className="flex-1">
           <div className="text-sm font-semibold">Aktivera poängsystem</div>
           <div className="text-xs text-muted-foreground">

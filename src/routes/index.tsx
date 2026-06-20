@@ -31,21 +31,34 @@ const COLOR_MAP: Record<string, { bg: string; ring: string; emoji: string }> = {
   },
 };
 
+// Detect an auth redirect that landed on "/" (Site URL = "/"). Client-only.
+function hasAuthParams() {
+  if (typeof window === "undefined") return false;
+  const { search, hash } = window.location;
+  return /(^|[?&#])(code|access_token|refresh_token|error)=/.test(search + hash);
+}
+
 function HomePage() {
   const navigate = useNavigate();
-  // Onboarding gate: no family set up yet → go to onboarding.
-  const [ready, setReady] = useState(false);
+  // Onboarding gate. Computed synchronously (localStorage is available on the
+  // first client render) so the queries can enable immediately — no extra
+  // hydration → effect → re-render hop before fetching starts. Stays false
+  // during SSR, so the server renders the same skeleton the client first paints.
+  const [ready] = useState(
+    () => typeof window !== "undefined" && !hasAuthParams() && !!getCurrentFamilyId(),
+  );
+
   useEffect(() => {
-    // If an auth redirect landed here (Site URL = "/"), don't interrupt it.
-    // Hand off to the callback with the token intact (full navigation keeps the
-    // ?code / #access_token that client-side routing would otherwise drop).
-    const { search, hash } = window.location;
-    if (/(^|[?&#])(code|access_token|refresh_token|error)=/.test(search + hash)) {
+    // If an auth redirect landed here, hand off to the callback with the token
+    // intact (full navigation keeps the ?code / #access_token that client-side
+    // routing would otherwise drop).
+    if (hasAuthParams()) {
+      const { search, hash } = window.location;
       window.location.replace(`/auth/callback${search}${hash}`);
       return;
     }
-    if (getCurrentFamilyId()) setReady(true);
-    else navigate({ to: "/onboarding", replace: true });
+    // No family set up yet → go to onboarding.
+    if (!getCurrentFamilyId()) navigate({ to: "/onboarding", replace: true });
   }, [navigate]);
 
   const { data: children, isLoading } = useQuery({
@@ -59,13 +72,9 @@ function HomePage() {
     enabled: ready,
   });
 
-  if (!ready) {
-    return (
-      <main className="mx-auto flex min-h-screen max-w-md items-center justify-center px-5">
-        <div className="h-12 w-12 animate-pulse rounded-full bg-white/70" />
-      </main>
-    );
-  }
+  // The static chrome renders immediately; only the data-driven child list
+  // falls back to skeletons while children are still loading (or not yet ready).
+  const showSkeletons = !ready || isLoading;
 
   return (
     <main className="mx-auto min-h-screen max-w-md px-5 pb-10 pt-10">
@@ -79,7 +88,7 @@ function HomePage() {
       </header>
 
       <div className="space-y-5">
-        {isLoading && (
+        {showSkeletons && (
           <>
             <div className="h-56 animate-pulse rounded-3xl bg-white/60" />
             <div className="h-56 animate-pulse rounded-3xl bg-white/60" />

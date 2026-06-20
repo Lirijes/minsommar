@@ -172,6 +172,52 @@ export async function getChildByName(name: string) {
   return data;
 }
 
+// Family-level settings readable in both contexts (parent Bearer / child cookie).
+export async function familySettings() {
+  const fam = await requireFamily();
+  const { data, error } = await supabaseAdmin
+    .from("families")
+    .select("points_enabled")
+    .eq("id", fam)
+    .maybeSingle();
+  if (error) throw error;
+  return { points_enabled: data?.points_enabled ?? false };
+}
+
+export async function listRewards() {
+  const fam = await requireFamily();
+  const { data, error } = await supabaseAdmin
+    .from("rewards")
+    .select("*")
+    .eq("family_id", fam)
+    .order("sort_order", { ascending: true })
+    .order("created_at", { ascending: true });
+  if (error) throw error;
+  return data ?? [];
+}
+
+// Child's point balance = sum of points over completed activities that award
+// points. Derived on the fly (no balance table).
+export async function childPoints(childId: string): Promise<number> {
+  const fam = await requireFamily();
+  await assertChildInFamily(fam, childId);
+  const { data, error } = await supabaseAdmin
+    .from("completions")
+    .select("activities(points)")
+    .eq("child_id", childId);
+  if (error) throw error;
+  // The embedded to-one join may surface as an object or a single-element array
+  // depending on inference; normalize both.
+  type CompRow = {
+    activities: { points: number | null } | { points: number | null }[] | null;
+  };
+  return ((data ?? []) as unknown as CompRow[]).reduce((sum, row) => {
+    const a = row.activities;
+    const pts = Array.isArray(a) ? a[0]?.points : a?.points;
+    return sum + (pts ?? 0);
+  }, 0);
+}
+
 export async function listCategories() {
   const fam = await requireFamily();
   const { data, error } = await supabaseAdmin
@@ -272,10 +318,7 @@ export async function addBucketItem(childId: string, title: string, emoji: strin
   if (error) throw error;
 }
 
-export async function addBucketItems(
-  childId: string,
-  items: { title: string; emoji: string }[],
-) {
+export async function addBucketItems(childId: string, items: { title: string; emoji: string }[]) {
   if (items.length === 0) return;
   const fam = await requireFamily();
   await assertChildInFamily(fam, childId);

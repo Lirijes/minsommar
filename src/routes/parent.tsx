@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   addActivity,
   addChild,
+  backfillActivityPoints,
   createFamilyToken,
   deleteActivity,
   deleteChild,
@@ -14,6 +15,7 @@ import {
   fetchCompletionsForDate,
   fetchFamily,
   fetchMyFamilyIds,
+  setPointsEnabled,
   todayDate,
   updateActivity,
   updateChild,
@@ -24,7 +26,18 @@ import {
 } from "@/lib/db";
 import { getCurrentFamilyId, setCurrentFamilyId } from "@/lib/family";
 import { useSession, signOut } from "@/lib/auth";
-import { ArrowLeft, Copy, LogOut, Pencil, Plus, RefreshCw, Trash2, X } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { ArrowLeft, Copy, Gift, LogOut, Pencil, Plus, RefreshCw, Trash2, X } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -57,7 +70,7 @@ function ParentPage() {
     let active = true;
     (async () => {
       const ids = await fetchMyFamilyIds();
-      let id: string | null = ids[0] ?? getCurrentFamilyId();
+      const id: string | null = ids[0] ?? getCurrentFamilyId();
       if (!active) return;
       if (id) setCurrentFamilyId(id);
       setFamilyId(id);
@@ -74,6 +87,13 @@ function ParentPage() {
   const childrenQ = useQuery({ queryKey: ["children"], queryFn: fetchChildren });
   const catsQ = useQuery({ queryKey: ["categories"], queryFn: fetchCategories });
   const actsQ = useQuery({ queryKey: ["activities"], queryFn: fetchActivities });
+  // Shares the ["family", familyId] cache with ManageFamily (deduped).
+  const familyQ = useQuery({
+    queryKey: ["family", familyId],
+    queryFn: () => fetchFamily(familyId!),
+    enabled: !!familyId,
+  });
+  const pointsEnabled = familyQ.data?.points_enabled ?? false;
 
   if (loading || !session) {
     return (
@@ -86,7 +106,10 @@ function ParentPage() {
   return (
     <main className="mx-auto min-h-screen max-w-md px-5 pb-10 pt-6">
       <div className="mb-6 flex items-center gap-3">
-        <Link to="/" className="grid h-11 w-11 place-items-center rounded-full bg-white/80 shadow-sm">
+        <Link
+          to="/"
+          className="grid h-11 w-11 place-items-center rounded-full bg-white/80 shadow-sm"
+        >
           <ArrowLeft className="h-5 w-5" />
         </Link>
         <h1 className="flex-1 text-2xl">Föräldravy</h1>
@@ -100,6 +123,22 @@ function ParentPage() {
       </div>
 
       {familyId && <ManageFamily familyId={familyId} />}
+
+      {familyId && pointsEnabled && (
+        <Link
+          to="/beloningar"
+          className="card-soft mb-6 flex items-center gap-3 p-4 transition active:scale-[0.99]"
+        >
+          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-sun-soft to-mint-soft text-2xl shadow-inner">
+            <Gift className="h-5 w-5" />
+          </span>
+          <div className="flex-1">
+            <div className="font-bold">Belöningar</div>
+            <div className="text-xs text-muted-foreground">Skapa och hantera belöningar</div>
+          </div>
+          <ArrowLeft className="h-5 w-5 rotate-180 text-muted-foreground" />
+        </Link>
+      )}
 
       {familyId && (
         <section className="mb-8">
@@ -136,6 +175,7 @@ function ParentPage() {
               categoryName={cat.name}
               categorySlug={cat.slug}
               activities={actsQ.data?.filter((a) => a.category_id === cat.id) ?? []}
+              pointsEnabled={pointsEnabled}
             />
           ))}
         </div>
@@ -152,6 +192,7 @@ function ManageFamily({ familyId }: { familyId: string }) {
   });
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState("");
+  const [confirmActivate, setConfirmActivate] = useState(false);
 
   const save = useMutation({
     mutationFn: () => updateFamilyName(familyId, name.trim()),
@@ -160,6 +201,36 @@ function ManageFamily({ familyId }: { familyId: string }) {
       setEditing(false);
       toast.success("Familjenamn sparat");
     },
+  });
+
+  const refreshPointsQueries = () => {
+    qc.invalidateQueries({ queryKey: ["family", familyId] });
+    qc.invalidateQueries({ queryKey: ["family-settings"] });
+    qc.invalidateQueries({ queryKey: ["activities"] });
+  };
+
+  // Activating: turn the system on AND give existing point-less activities a
+  // default of 10 (existing values are kept). Confirmed via the dialog.
+  const activate = useMutation({
+    mutationFn: async () => {
+      await setPointsEnabled(familyId, true);
+      await backfillActivityPoints(familyId);
+    },
+    onSuccess: () => {
+      refreshPointsQueries();
+      setConfirmActivate(false);
+      toast.success("Poängsystem aktiverat");
+    },
+    onError: () => toast.error("Kunde inte aktivera poängsystemet"),
+  });
+
+  const deactivate = useMutation({
+    mutationFn: () => setPointsEnabled(familyId, false),
+    onSuccess: () => {
+      refreshPointsQueries();
+      toast.success("Poängsystem avstängt");
+    },
+    onError: () => toast.error("Kunde inte spara inställningen"),
   });
 
   const family = familyQ.data;
@@ -209,6 +280,45 @@ function ManageFamily({ familyId }: { familyId: string }) {
           </button>
         </div>
       )}
+
+      <div className="mt-4 flex items-center gap-3 border-t border-border/60 pt-4">
+        <div className="flex-1">
+          <div className="text-sm font-semibold">Aktivera poängsystem</div>
+          <div className="text-xs text-muted-foreground">
+            Frivilligt. Ge poäng på aktiviteter och skapa belöningar.
+          </div>
+        </div>
+        <Switch
+          checked={family?.points_enabled ?? false}
+          onCheckedChange={(v) => (v ? setConfirmActivate(true) : deactivate.mutate())}
+          disabled={activate.isPending || deactivate.isPending || !family}
+          aria-label="Aktivera poängsystem"
+        />
+      </div>
+
+      <AlertDialog open={confirmActivate} onOpenChange={setConfirmActivate}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Aktivera poängsystem</AlertDialogTitle>
+            <AlertDialogDescription>
+              Alla befintliga aktiviteter kommer att få 10 poäng. Du kan ändra poängen på enskilda
+              aktiviteter när du vill.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Avbryt</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                activate.mutate();
+              }}
+              disabled={activate.isPending}
+            >
+              Aktivera
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -507,11 +617,13 @@ function ManageCategory({
   categoryName,
   categorySlug,
   activities,
+  pointsEnabled,
 }: {
   categoryId: string;
   categoryName: string;
   categorySlug: string;
   activities: Activity[];
+  pointsEnabled: boolean;
 }) {
   const qc = useQueryClient();
   const subcategorized = categorySlug === "kreativitet";
@@ -519,25 +631,47 @@ function ManageCategory({
   const [name, setName] = useState("");
   const [emoji, setEmoji] = useState("✨");
   const [subcategory, setSubcategory] = useState(SUBCATEGORIES[0].slug);
+  const [givePoints, setGivePoints] = useState(false);
+  const [points, setPoints] = useState("10");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [editEmoji, setEditEmoji] = useState("");
+  const [editGivePoints, setEditGivePoints] = useState(false);
+  const [editPoints, setEditPoints] = useState("10");
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ["activities"] });
 
+  // Parse a points field into a non-negative int, or null when the toggle is off.
+  const parsePoints = (on: boolean, value: string): number | null =>
+    on ? Math.max(0, Math.floor(Number(value) || 0)) : null;
+
   const addM = useMutation({
     mutationFn: () =>
-      addActivity(categoryId, name.trim(), emoji.trim(), subcategorized ? subcategory : null),
+      addActivity(
+        categoryId,
+        name.trim(),
+        emoji.trim(),
+        subcategorized ? subcategory : null,
+        parsePoints(givePoints, points),
+      ),
     onSuccess: () => {
       invalidate();
       setName("");
       setEmoji("✨");
+      setGivePoints(false);
+      setPoints("10");
       setAdding(false);
       toast.success("Aktivitet tillagd");
     },
   });
   const updM = useMutation({
-    mutationFn: (id: string) => updateActivity(id, editName.trim(), editEmoji.trim()),
+    mutationFn: (id: string) =>
+      updateActivity(
+        id,
+        editName.trim(),
+        editEmoji.trim(),
+        parsePoints(editGivePoints, editPoints),
+      ),
     onSuccess: () => {
       invalidate();
       setEditingId(null);
@@ -556,7 +690,14 @@ function ManageCategory({
       <div className="mb-3 flex items-center justify-between">
         <h3 className="font-bold">{categoryName}</h3>
         <button
-          onClick={() => setAdding((s) => !s)}
+          onClick={() => {
+            // Opening: default to giving 10 points when the system is on (editable).
+            if (!adding) {
+              setGivePoints(pointsEnabled);
+              setPoints("10");
+            }
+            setAdding((s) => !s);
+          }}
           className="grid h-8 w-8 place-items-center rounded-full bg-primary text-primary-foreground shadow"
           aria-label="Lägg till"
         >
@@ -600,6 +741,22 @@ function ManageCategory({
               Lägg till
             </button>
           </div>
+          {pointsEnabled && (
+            <div className="flex items-center gap-2 rounded-xl bg-white px-3 py-2">
+              <span className="flex-1 text-sm font-semibold">Ge poäng</span>
+              {givePoints && (
+                <input
+                  type="number"
+                  min={0}
+                  value={points}
+                  onChange={(e) => setPoints(e.target.value)}
+                  className="w-20 rounded-xl bg-muted px-2 py-1.5 text-center text-sm outline-none"
+                  aria-label="Antal poäng"
+                />
+              )}
+              <Switch checked={givePoints} onCheckedChange={setGivePoints} aria-label="Ge poäng" />
+            </div>
+          )}
         </div>
       )}
 
@@ -624,6 +781,11 @@ function ManageCategory({
                       setEditEmoji={setEditEmoji}
                       setEditName={setEditName}
                       setEditingId={setEditingId}
+                      pointsEnabled={pointsEnabled}
+                      editGivePoints={editGivePoints}
+                      editPoints={editPoints}
+                      setEditGivePoints={setEditGivePoints}
+                      setEditPoints={setEditPoints}
                       onSave={() => updM.mutate(a.id)}
                       onDelete={() => delM.mutate(a.id)}
                     />
@@ -666,6 +828,11 @@ function ActivityRow({
   setEditEmoji,
   setEditName,
   setEditingId,
+  pointsEnabled,
+  editGivePoints,
+  editPoints,
+  setEditGivePoints,
+  setEditPoints,
   onSave,
   onDelete,
 }: {
@@ -676,63 +843,94 @@ function ActivityRow({
   setEditEmoji: (v: string) => void;
   setEditName: (v: string) => void;
   setEditingId: (v: string | null) => void;
+  pointsEnabled: boolean;
+  editGivePoints: boolean;
+  editPoints: string;
+  setEditGivePoints: (v: boolean) => void;
+  setEditPoints: (v: string) => void;
   onSave: () => void;
   onDelete: () => void;
 }) {
   return (
     <li>
-            {editingId === a.id ? (
-              <div className="flex gap-2 rounded-2xl bg-sand-soft p-2">
+      {editingId === a.id ? (
+        <div className="flex flex-col gap-2 rounded-2xl bg-sand-soft p-2">
+          <div className="flex gap-2">
+            <input
+              value={editEmoji}
+              onChange={(e) => setEditEmoji(e.target.value)}
+              className="w-12 rounded-xl bg-white px-2 py-1.5 text-center text-lg"
+              maxLength={4}
+            />
+            <input
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              className="flex-1 rounded-xl bg-white px-3 py-1.5 text-sm"
+            />
+            <button
+              onClick={onSave}
+              className="rounded-xl bg-primary px-3 text-xs font-semibold text-primary-foreground"
+            >
+              Spara
+            </button>
+            <button onClick={() => setEditingId(null)} className="rounded-xl bg-white px-2 text-xs">
+              Avbryt
+            </button>
+          </div>
+          {pointsEnabled && (
+            <div className="flex items-center gap-2 rounded-xl bg-white px-3 py-2">
+              <span className="flex-1 text-sm font-semibold">Ge poäng</span>
+              {editGivePoints && (
                 <input
-                  value={editEmoji}
-                  onChange={(e) => setEditEmoji(e.target.value)}
-                  className="w-12 rounded-xl bg-white px-2 py-1.5 text-center text-lg"
-                  maxLength={4}
+                  type="number"
+                  min={0}
+                  value={editPoints}
+                  onChange={(e) => setEditPoints(e.target.value)}
+                  className="w-20 rounded-xl bg-muted px-2 py-1.5 text-center text-sm outline-none"
+                  aria-label="Antal poäng"
                 />
-                <input
-                  value={editName}
-                  onChange={(e) => setEditName(e.target.value)}
-                  className="flex-1 rounded-xl bg-white px-3 py-1.5 text-sm"
-                />
-                <button
-                  onClick={onSave}
-                  className="rounded-xl bg-primary px-3 text-xs font-semibold text-primary-foreground"
-                >
-                  Spara
-                </button>
-                <button
-                  onClick={() => setEditingId(null)}
-                  className="rounded-xl bg-white px-2 text-xs"
-                >
-                  Avbryt
-                </button>
-              </div>
-            ) : (
-              <div className="flex items-center gap-2 rounded-2xl bg-white/70 p-2">
-                <span className="text-xl">{a.emoji}</span>
-                <span className="flex-1 text-sm">{a.name}</span>
-                <button
-                  onClick={() => {
-                    setEditingId(a.id);
-                    setEditName(a.name);
-                    setEditEmoji(a.emoji);
-                  }}
-                  className="grid h-8 w-8 place-items-center rounded-full text-muted-foreground hover:bg-peach-soft"
-                  aria-label="Ändra"
-                >
-                  <Pencil className="h-3.5 w-3.5" />
-                </button>
-                <button
-                  onClick={() => {
-                    if (confirm(`Ta bort "${a.name}"?`)) onDelete();
-                  }}
-                  className="grid h-8 w-8 place-items-center rounded-full text-destructive hover:bg-destructive/10"
-                  aria-label="Ta bort"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            )}
+              )}
+              <Switch
+                checked={editGivePoints}
+                onCheckedChange={setEditGivePoints}
+                aria-label="Ge poäng"
+              />
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="flex items-center gap-2 rounded-2xl bg-white/70 p-2">
+          <span className="text-xl">{a.emoji}</span>
+          <span className="flex-1 text-sm">{a.name}</span>
+          {pointsEnabled && a.points != null && (
+            <span className="rounded-full bg-sun-soft px-2 py-0.5 text-xs font-bold text-foreground">
+              +{a.points} p
+            </span>
+          )}
+          <button
+            onClick={() => {
+              setEditingId(a.id);
+              setEditName(a.name);
+              setEditEmoji(a.emoji);
+              setEditGivePoints(a.points != null);
+              setEditPoints(String(a.points ?? 10));
+            }}
+            className="grid h-8 w-8 place-items-center rounded-full text-muted-foreground hover:bg-peach-soft"
+            aria-label="Ändra"
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </button>
+          <button
+            onClick={() => {
+              if (confirm(`Ta bort "${a.name}"?`)) onDelete();
+            }}
+            className="grid h-8 w-8 place-items-center rounded-full text-destructive hover:bg-destructive/10"
+            aria-label="Ta bort"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
     </li>
   );
 }

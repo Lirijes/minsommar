@@ -9,7 +9,7 @@ export const APP_VERSION = "1.0.0";
 export const DEVELOPER = {
   name: "Lirije Shabani",
   role: "Fullstack Utvecklare",
-  bio: "Jag skapade Sommar för mina egna barn. Målet var att inspirera dem att lägga undan skärmen och istället upptäcka roliga, enkla aktiviteter som de flesta barn kan göra själva. Jag hoppas att appen kan hjälpa fler familjer att få ut lite mer av sommarlovet.",
+  bio: "Jag skapade Min Sommar för mina egna barn. Målet var att inspirera dem att lägga undan skärmen och istället upptäcka roliga, enkla aktiviteter som de flesta barn kan göra själva. Jag hoppas att appen kan hjälpa fler familjer att få ut lite mer av sommarlovet.",
   // Leave empty ("") to show a friendly placeholder-avatar instead of a photo.
   avatarUrl: "",
   email: "lirije11@hotmail.com",

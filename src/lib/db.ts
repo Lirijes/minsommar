@@ -6,19 +6,27 @@ import {
   sfAddCompletion,
   sfAllCompletions,
   sfBucketItems,
+  sfChildPoints,
   sfCompletionsForDate,
   sfDeleteBucketItem,
+  sfFamilySettings,
   sfGetChildByName,
   sfListActivities,
   sfListCategories,
   sfListChildren,
+  sfListRewards,
   sfRemoveCompletion,
   sfSetBucketItemDone,
   sfToggleFavorite,
   sfUpdateBucketItem,
 } from "@/lib/api/family.functions";
 
-export type Family = { id: string; name: string; created_at: string };
+export type Family = {
+  id: string;
+  name: string;
+  created_at: string;
+  points_enabled: boolean;
+};
 export type Child = {
   id: string;
   family_id: string | null;
@@ -43,8 +51,22 @@ export type Activity = {
   name: string;
   emoji: string;
   is_favorite: boolean;
+  // null = activity gives no points (the "Ge poäng" toggle is off).
+  points: number | null;
   sort_order: number;
 };
+// Parent-defined reward the child can save points toward.
+export type Reward = {
+  id: string;
+  family_id: string;
+  name: string;
+  points_required: number;
+  description: string | null;
+  sort_order: number;
+  created_at: string;
+};
+// Lightweight family settings read both contexts can fetch (child via cookie).
+export type FamilySettings = { points_enabled: boolean };
 export type Completion = {
   id: string;
   child_id: string;
@@ -128,17 +150,32 @@ export async function addChildrenToFamily(familyId: string, children: NewChild[]
 }
 
 export async function fetchFamily(id: string): Promise<Family | null> {
-  const { data, error } = await supabase
-    .from("families")
-    .select("*")
-    .eq("id", id)
-    .maybeSingle();
+  const { data, error } = await supabase.from("families").select("*").eq("id", id).maybeSingle();
   if (error) throw error;
   return data;
 }
 
 export async function updateFamilyName(id: string, name: string) {
   const { error } = await supabase.from("families").update({ name }).eq("id", id);
+  if (error) throw error;
+}
+
+// Toggle the optional points system for a family (parent, via RLS).
+export async function setPointsEnabled(id: string, value: boolean) {
+  const { error } = await supabase.from("families").update({ points_enabled: value }).eq("id", id);
+  if (error) throw error;
+}
+
+// Give every existing activity without points a default value (used when the
+// family first activates the points system). Activities that already have a
+// points value are left untouched. Scoped to the family, so it never affects
+// families that don't use points.
+export async function backfillActivityPoints(familyId: string, value = 10) {
+  const { error } = await supabase
+    .from("activities")
+    .update({ points: value })
+    .eq("family_id", familyId)
+    .is("points", null);
   if (error) throw error;
 }
 
@@ -193,10 +230,7 @@ export async function fetchMyFamilyIds(): Promise<string[]> {
 // Returns true if they are (now) a member. Claiming only succeeds for a
 // member-less family (pre-auth families or one just created); if the family is
 // already owned by someone else the insert is blocked by RLS and we return false.
-export async function ensureFamilyMembership(
-  familyId: string,
-  userId: string,
-): Promise<boolean> {
+export async function ensureFamilyMembership(familyId: string, userId: string): Promise<boolean> {
   const mine = await fetchMyFamilyIds();
   if (mine.includes(familyId)) return true;
   try {
@@ -207,9 +241,7 @@ export async function ensureFamilyMembership(
   }
 }
 
-export async function fetchActiveFamilyToken(
-  familyId: string,
-): Promise<FamilyAccessToken | null> {
+export async function fetchActiveFamilyToken(familyId: string): Promise<FamilyAccessToken | null> {
   const { data, error } = await supabase
     .from("family_access_tokens")
     .select("*")
@@ -262,13 +294,62 @@ export async function fetchActivities(): Promise<Activity[]> {
   return (await sfListActivities()) as Activity[];
 }
 
+// ---------------------------------------------------------------------------
+// Optional points & rewards system (gated by family.points_enabled)
+// ---------------------------------------------------------------------------
+
+// Readable in both contexts (parent Bearer / child cookie) via server fn.
+export async function fetchFamilySettings(): Promise<FamilySettings> {
+  return (await sfFamilySettings()) as FamilySettings;
+}
+
+export async function fetchRewards(): Promise<Reward[]> {
+  return (await sfListRewards()) as Reward[];
+}
+
+export async function fetchChildPoints(childId: string): Promise<number> {
+  return (await sfChildPoints({ data: { childId } })) as number;
+}
+
+// Reward management (parent, via RLS). family_id from the active family.
+export async function addReward(name: string, pointsRequired: number, description: string | null) {
+  const { error } = await supabase.from("rewards").insert({
+    family_id: getCurrentFamilyId()!,
+    name,
+    points_required: pointsRequired,
+    description: description || null,
+  });
+  if (error) throw error;
+}
+
+export async function updateReward(
+  id: string,
+  name: string,
+  pointsRequired: number,
+  description: string | null,
+) {
+  const { error } = await supabase
+    .from("rewards")
+    .update({ name, points_required: pointsRequired, description: description || null })
+    .eq("id", id);
+  if (error) throw error;
+}
+
+export async function deleteReward(id: string) {
+  const { error } = await supabase.from("rewards").delete().eq("id", id);
+  if (error) throw error;
+}
+
 // Clone the template catalog into a newly created family (idempotent server-side).
 export async function cloneCatalogForFamily(familyId: string) {
   const { error } = await supabase.rpc("clone_catalog_for_family", { p_family: familyId });
   if (error) throw error;
 }
 
-export async function fetchCompletionsForDate(childId: string, date: string): Promise<Completion[]> {
+export async function fetchCompletionsForDate(
+  childId: string,
+  date: string,
+): Promise<Completion[]> {
   return (await sfCompletionsForDate({ data: { childId, date } })) as Completion[];
 }
 
@@ -304,10 +385,16 @@ export async function addActivity(
   name: string,
   emoji: string,
   subcategory: string | null = null,
+  points: number | null = null,
 ) {
-  const { error } = await supabase
-    .from("activities")
-    .insert({ category_id: categoryId, family_id: getCurrentFamilyId(), name, emoji: emoji || "✨", subcategory });
+  const { error } = await supabase.from("activities").insert({
+    category_id: categoryId,
+    family_id: getCurrentFamilyId(),
+    name,
+    emoji: emoji || "✨",
+    subcategory,
+    points,
+  });
   if (error) throw error;
 }
 
@@ -315,10 +402,15 @@ export async function toggleFavorite(id: string, value: boolean) {
   await sfToggleFavorite({ data: { activityId: id, value } });
 }
 
-export async function updateActivity(id: string, name: string, emoji: string) {
+export async function updateActivity(
+  id: string,
+  name: string,
+  emoji: string,
+  points: number | null = null,
+) {
   const { error } = await supabase
     .from("activities")
-    .update({ name, emoji: emoji || "✨" })
+    .update({ name, emoji: emoji || "✨", points })
     .eq("id", id);
   if (error) throw error;
 }
@@ -357,10 +449,7 @@ export async function addBucketItem(childId: string, title: string, emoji: strin
 }
 
 // Insert several goals at once (used by the first-time welcome flow).
-export async function addBucketItems(
-  childId: string,
-  items: { title: string; emoji: string }[],
-) {
+export async function addBucketItems(childId: string, items: { title: string; emoji: string }[]) {
   await sfAddBucketItems({ data: { childId, items } });
 }
 

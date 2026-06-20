@@ -315,7 +315,7 @@ function ChildDayPage() {
             <div className="rounded-2xl bg-sun-soft px-4 py-2">
               <div className="text-2xl font-bold text-foreground">{pointsQ.data ?? 0}</div>
               <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                Poäng
+                Intjänat
               </div>
             </div>
           )}

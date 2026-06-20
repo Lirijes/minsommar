@@ -179,6 +179,67 @@ export type Database = {
           },
         ];
       };
+      reward_redemptions: {
+        Row: {
+          child_id: string;
+          decided_at: string | null;
+          decided_by: string | null;
+          family_id: string;
+          id: string;
+          points: number;
+          requested_at: string;
+          reward_id: string | null;
+          reward_name: string;
+          status: string;
+        };
+        Insert: {
+          child_id: string;
+          decided_at?: string | null;
+          decided_by?: string | null;
+          family_id: string;
+          id?: string;
+          points: number;
+          requested_at?: string;
+          reward_id?: string | null;
+          reward_name: string;
+          status?: string;
+        };
+        Update: {
+          child_id?: string;
+          decided_at?: string | null;
+          decided_by?: string | null;
+          family_id?: string;
+          id?: string;
+          points?: number;
+          requested_at?: string;
+          reward_id?: string | null;
+          reward_name?: string;
+          status?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "reward_redemptions_family_id_fkey";
+            columns: ["family_id"];
+            isOneToOne: false;
+            referencedRelation: "families";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "reward_redemptions_reward_id_fkey";
+            columns: ["reward_id"];
+            isOneToOne: false;
+            referencedRelation: "rewards";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "reward_redemptions_child_id_fkey";
+            columns: ["child_id"];
+            isOneToOne: false;
+            referencedRelation: "children";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       family_access_tokens: {
         Row: {
           created_at: string;
@@ -399,6 +460,14 @@ export type Database = {
       accept_family_invite: {
         Args: { p_token: string };
         Returns: string;
+      };
+      approve_reward_redemption: {
+        Args: { p_id: string };
+        Returns: undefined;
+      };
+      reject_reward_redemption: {
+        Args: { p_id: string };
+        Returns: undefined;
       };
       clone_catalog_for_family: {
         Args: { p_family: string };

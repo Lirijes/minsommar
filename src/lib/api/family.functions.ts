@@ -67,6 +67,14 @@ export const sfChildPoints = createServerFn({ method: "POST" })
   .inputValidator(childId)
   .handler(async ({ data }) => (await SERVER()).childPoints(data.childId));
 
+export const sfChildPointsSummary = createServerFn({ method: "POST" })
+  .inputValidator(childId)
+  .handler(async ({ data }) => (await SERVER()).childPointsSummary(data.childId));
+
+export const sfChildRedemptions = createServerFn({ method: "POST" })
+  .inputValidator(childId)
+  .handler(async ({ data }) => (await SERVER()).childRedemptions(data.childId));
+
 export const sfCompletionsForDate = createServerFn({ method: "POST" })
   .inputValidator(z.object({ childId: z.string().uuid(), date: z.string() }))
   .handler(async ({ data }) => (await SERVER()).completionsForDate(data.childId, data.date));
@@ -84,6 +92,12 @@ export const sfAddCompletion = createServerFn({ method: "POST" })
   .inputValidator(z.object({ childId: z.string().uuid(), activityId: z.string().uuid() }))
   .handler(async ({ data }) => {
     await (await SERVER()).addCompletion(data.childId, data.activityId);
+  });
+
+export const sfRequestRedemption = createServerFn({ method: "POST" })
+  .inputValidator(z.object({ childId: z.string().uuid(), rewardId: z.string().uuid() }))
+  .handler(async ({ data }) => {
+    await (await SERVER()).requestRedemption(data.childId, data.rewardId);
   });
 
 export const sfRemoveCompletion = createServerFn({ method: "POST" })

@@ -7,6 +7,8 @@ import {
   sfAllCompletions,
   sfBucketItems,
   sfChildPoints,
+  sfChildPointsSummary,
+  sfChildRedemptions,
   sfCompletionsForDate,
   sfDeleteBucketItem,
   sfFamilySettings,
@@ -16,6 +18,7 @@ import {
   sfListChildren,
   sfListRewards,
   sfRemoveCompletion,
+  sfRequestRedemption,
   sfResendFamilyInvite,
   sfRevokeFamilyInvite,
   sfSendFamilyInvite,
@@ -68,6 +71,31 @@ export type Reward = {
   sort_order: number;
   created_at: string;
 };
+export type RedemptionStatus = "pending" | "approved" | "rejected";
+// A child's request to spend points on a reward (name + cost snapshotted so the
+// row survives the reward being edited/deleted — used for history & statistics).
+export type RewardRedemption = {
+  id: string;
+  reward_id: string | null;
+  reward_name: string;
+  points: number;
+  status: RedemptionStatus;
+  requested_at: string;
+  decided_at: string | null;
+};
+// A pending request as the parent dashboard sees it (with the requesting child).
+export type RewardRequest = {
+  id: string;
+  reward_id: string | null;
+  reward_name: string;
+  points: number;
+  status: RedemptionStatus;
+  requested_at: string;
+  child: { name: string; emoji: string } | null;
+};
+// Two point figures the child sees: total earned (statistics, only grows) and
+// the spendable balance; `pending` is the amount reserved by open requests.
+export type ChildPointsSummary = { earned: number; available: number; pending: number };
 // Lightweight family settings read both contexts can fetch (child via cookie).
 export type FamilySettings = { points_enabled: boolean };
 export type Completion = {
@@ -410,6 +438,21 @@ export async function fetchChildPoints(childId: string): Promise<number> {
   return (await sfChildPoints({ data: { childId } })) as number;
 }
 
+// Earned (total) + available balance + reserved-by-pending, in one call.
+export async function fetchChildPointsSummary(childId: string): Promise<ChildPointsSummary> {
+  return (await sfChildPointsSummary({ data: { childId } })) as ChildPointsSummary;
+}
+
+// The child's own redemptions (waiting + decided), newest first.
+export async function fetchChildRedemptions(childId: string): Promise<RewardRedemption[]> {
+  return (await sfChildRedemptions({ data: { childId } })) as RewardRedemption[];
+}
+
+// Child requests to redeem a reward (creates a pending request; no points move).
+export async function requestRedemption(childId: string, rewardId: string) {
+  await sfRequestRedemption({ data: { childId, rewardId } });
+}
+
 // Reward management (parent, via RLS). family_id from the active family.
 export async function addReward(name: string, pointsRequired: number, description: string | null) {
   const { error } = await supabase.from("rewards").insert({
@@ -436,6 +479,55 @@ export async function updateReward(
 
 export async function deleteReward(id: string) {
   const { error } = await supabase.from("rewards").delete().eq("id", id);
+  if (error) throw error;
+}
+
+// Parent dashboard: pending reward requests across the family's children. Read on
+// the authed client (RLS: is_family_member); the embedded children join is
+// member-scoped too, so a parent only ever sees their own family's requests.
+export async function listRewardRequests(familyId: string): Promise<RewardRequest[]> {
+  const { data, error } = await supabase
+    .from("reward_redemptions")
+    .select("id, reward_id, reward_name, points, status, requested_at, children(name, emoji)")
+    .eq("family_id", familyId)
+    .eq("status", "pending")
+    .order("requested_at", { ascending: true });
+  if (error) throw error;
+  // The embedded to-one join may surface as an object or a single-element array
+  // depending on inference; normalize both (mirrors childPoints in the server module).
+  type ChildRel = { name: string; emoji: string };
+  type Row = {
+    id: string;
+    reward_id: string | null;
+    reward_name: string;
+    points: number;
+    status: string;
+    requested_at: string;
+    children: ChildRel | ChildRel[] | null;
+  };
+  return ((data ?? []) as unknown as Row[]).map((r) => {
+    const c = r.children;
+    return {
+      id: r.id,
+      reward_id: r.reward_id,
+      reward_name: r.reward_name,
+      points: r.points,
+      status: r.status as RedemptionStatus,
+      requested_at: r.requested_at,
+      child: Array.isArray(c) ? (c[0] ?? null) : c,
+    };
+  });
+}
+
+// Parent approves a pending request (DEFINER RPC re-checks the balance atomically).
+export async function approveRewardRequest(id: string) {
+  const { error } = await supabase.rpc("approve_reward_redemption", { p_id: id });
+  if (error) throw error;
+}
+
+// Parent rejects a pending request (no points move; the child can try again).
+export async function rejectRewardRequest(id: string) {
+  const { error } = await supabase.rpc("reject_reward_redemption", { p_id: id });
   if (error) throw error;
 }
 

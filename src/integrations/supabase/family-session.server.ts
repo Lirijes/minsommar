@@ -235,6 +235,67 @@ export async function childPoints(childId: string): Promise<number> {
   }, 0);
 }
 
+// Derive a child's point figures in one place. Earned only ever grows (sum over
+// completions); spent = approved redemptions; pending = reserved by open requests.
+// `available` is the displayed balance (earned − spent); pending is reported
+// separately so the UI can reserve it without lowering the shown number.
+async function computePoints(
+  childId: string,
+): Promise<{ earned: number; spent: number; pending: number }> {
+  const { data: comps, error: e1 } = await supabaseAdmin
+    .from("completions")
+    .select("activities(points)")
+    .eq("child_id", childId);
+  if (e1) throw e1;
+  type CompRow = {
+    activities: { points: number | null } | { points: number | null }[] | null;
+  };
+  const earned = ((comps ?? []) as unknown as CompRow[]).reduce((sum, row) => {
+    const a = row.activities;
+    const pts = Array.isArray(a) ? a[0]?.points : a?.points;
+    return sum + (pts ?? 0);
+  }, 0);
+
+  const { data: reds, error: e2 } = await supabaseAdmin
+    .from("reward_redemptions")
+    .select("points, status")
+    .eq("child_id", childId)
+    .in("status", ["approved", "pending"]);
+  if (e2) throw e2;
+  let spent = 0;
+  let pending = 0;
+  for (const row of reds ?? []) {
+    if (row.status === "approved") spent += row.points ?? 0;
+    else if (row.status === "pending") pending += row.points ?? 0;
+  }
+  return { earned, spent, pending };
+}
+
+// Total earned (statistics, never decreases), available balance, and the amount
+// currently reserved by pending requests.
+export async function childPointsSummary(
+  childId: string,
+): Promise<{ earned: number; available: number; pending: number }> {
+  const fam = await requireFamily();
+  await assertChildInFamily(fam, childId);
+  const { earned, spent, pending } = await computePoints(childId);
+  return { earned, available: earned - spent, pending };
+}
+
+// A child's redemptions (pending + decided), newest first. Drives the child's
+// "waiting" and "redeemed" lists.
+export async function childRedemptions(childId: string) {
+  const fam = await requireFamily();
+  await assertChildInFamily(fam, childId);
+  const { data, error } = await supabaseAdmin
+    .from("reward_redemptions")
+    .select("id, reward_id, reward_name, points, status, requested_at, decided_at")
+    .eq("child_id", childId)
+    .order("requested_at", { ascending: false });
+  if (error) throw error;
+  return data ?? [];
+}
+
 export async function listCategories() {
   const fam = await requireFamily();
   const { data, error } = await supabaseAdmin
@@ -313,6 +374,48 @@ export async function removeCompletion(id: string) {
   if (!childId) return;
   await assertChildInFamily(fam, childId);
   const { error } = await supabaseAdmin.from("completions").delete().eq("id", id);
+  if (error) throw error;
+}
+
+// Child asks to redeem a reward → a pending request a parent must approve. Points
+// are NOT moved here; they only "leave" once a redemption is approved. We refuse
+// if the reward isn't in the family, if there's already a pending request for it,
+// or if the available balance (after reserving other pending requests) won't cover
+// the cost. The final, race-safe check happens again at approval time.
+export async function requestRedemption(childId: string, rewardId: string) {
+  const fam = await requireFamily();
+  await assertChildInFamily(fam, childId);
+
+  const { data: reward } = await supabaseAdmin
+    .from("rewards")
+    .select("id, name, points_required")
+    .eq("id", rewardId)
+    .eq("family_id", fam)
+    .maybeSingle();
+  if (!reward) throw new Error("Forbidden");
+
+  const { data: existing } = await supabaseAdmin
+    .from("reward_redemptions")
+    .select("id")
+    .eq("child_id", childId)
+    .eq("reward_id", rewardId)
+    .eq("status", "pending")
+    .maybeSingle();
+  if (existing) throw new Error("Den här belöningen väntar redan på godkännande");
+
+  const { earned, spent, pending } = await computePoints(childId);
+  if (earned - spent - pending < reward.points_required) {
+    throw new Error("Du har inte tillräckligt med poäng");
+  }
+
+  const { error } = await supabaseAdmin.from("reward_redemptions").insert({
+    family_id: fam,
+    reward_id: reward.id,
+    reward_name: reward.name,
+    child_id: childId,
+    points: reward.points_required,
+    status: "pending",
+  });
   if (error) throw error;
 }
 

@@ -2,6 +2,7 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   addChild,
+  approveRewardRequest,
   backfillActivityPoints,
   createFamilyToken,
   deleteChild,
@@ -14,6 +15,8 @@ import {
   fetchMyFamilyIds,
   listFamilyMembers,
   listPendingInvites,
+  listRewardRequests,
+  rejectRewardRequest,
   removeFamilyMember,
   resendFamilyInvite,
   revokeFamilyInvite,
@@ -49,6 +52,7 @@ import {
 } from "@/components/ui/dialog";
 import {
   ArrowLeft,
+  Check,
   ClipboardList,
   Copy,
   Crown,
@@ -197,6 +201,13 @@ function ParentPage() {
             </Link>
           )}
         </div>
+      )}
+
+      {familyId && pointsEnabled && (
+        <section className="mb-8">
+          <h2 className="mb-3 text-lg">Belöningsförfrågningar</h2>
+          <RewardRequests familyId={familyId} />
+        </section>
       )}
 
       {familyId && (
@@ -444,6 +455,96 @@ function FamilyParents({ familyId }: { familyId: string }) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+    </div>
+  );
+}
+
+// "Belöningsförfrågningar": pending redemptions across the family's children.
+// Any parent (member) can approve or reject. Approving draws the points (re-checked
+// atomically server-side); rejecting moves nothing and the child can try again.
+function RewardRequests({ familyId }: { familyId: string }) {
+  const qc = useQueryClient();
+  const requestsQ = useQuery({
+    queryKey: ["reward-requests", familyId],
+    queryFn: () => listRewardRequests(familyId),
+  });
+
+  const refresh = () => {
+    qc.invalidateQueries({ queryKey: ["reward-requests", familyId] });
+    // The child's balance/summary changes on approval; let those views refetch.
+    qc.invalidateQueries({ queryKey: ["child-points-summary"] });
+    qc.invalidateQueries({ queryKey: ["child-redemptions"] });
+  };
+
+  const approve = useMutation({
+    mutationFn: (id: string) => approveRewardRequest(id),
+    onSuccess: () => {
+      refresh();
+      toast.success("Belöning godkänd 🎉");
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Kunde inte godkänna"),
+  });
+  const reject = useMutation({
+    mutationFn: (id: string) => rejectRewardRequest(id),
+    onSuccess: () => {
+      refresh();
+      toast.success("Förfrågan avvisad");
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Kunde inte avvisa"),
+  });
+
+  const busyId =
+    (approve.isPending && approve.variables) || (reject.isPending && reject.variables) || null;
+  const requests = requestsQ.data ?? [];
+
+  if (requestsQ.isLoading) {
+    return <div className="card-soft h-20 animate-pulse" />;
+  }
+
+  if (requests.length === 0) {
+    return (
+      <div className="card-soft p-4 text-sm text-muted-foreground">
+        Inga väntande förfrågningar just nu.
+      </div>
+    );
+  }
+
+  return (
+    <div className="card-soft space-y-3 p-4">
+      {requests.map((r) => {
+        const busy = busyId === r.id;
+        return (
+          <div key={r.id} className="rounded-2xl bg-white p-3 shadow-sm">
+            <div className="flex items-center gap-3">
+              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-sun-soft to-mint-soft text-2xl shadow-inner">
+                {r.child?.emoji ?? "🎁"}
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="truncate font-bold">{r.reward_name}</div>
+                <div className="truncate text-xs text-muted-foreground">
+                  {r.child?.name ?? "Ett barn"} vill lösa in · {r.points} p
+                </div>
+              </div>
+            </div>
+            <div className="mt-3 flex gap-2">
+              <button
+                onClick={() => approve.mutate(r.id)}
+                disabled={busy}
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-full bg-mint py-2 text-sm font-bold text-foreground shadow-sm transition active:scale-95 disabled:opacity-50"
+              >
+                <Check className="h-4 w-4" strokeWidth={3} /> Godkänn
+              </button>
+              <button
+                onClick={() => reject.mutate(r.id)}
+                disabled={busy}
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-full bg-white py-2 text-sm font-bold text-destructive shadow-sm transition active:scale-95 disabled:opacity-50"
+              >
+                <X className="h-4 w-4" strokeWidth={3} /> Avvisa
+              </button>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

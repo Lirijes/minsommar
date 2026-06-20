@@ -9,6 +9,7 @@ import {
 } from "@tanstack/react-router";
 import { useEffect, type ReactNode } from "react";
 import { SpeedInsights } from "@vercel/speed-insights/react";
+import { Analytics } from "@vercel/analytics/react";
 import { Toaster } from "@/components/ui/sonner";
 import { AboutLink } from "@/components/AboutLink";
 
@@ -117,6 +118,7 @@ function RootComponent() {
       <AboutLink />
       <Toaster position="top-center" richColors />
       <SpeedInsights />
+      <Analytics />
     </QueryClientProvider>
   );
 }

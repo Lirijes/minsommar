@@ -16,6 +16,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as BeloningarRouteImport } from './routes/beloningar'
 import { Route as AktiviteterRouteImport } from './routes/aktiviteter'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as FTokenRouteImport } from './routes/f.$token'
 import { Route as ChildNameRouteImport } from './routes/child.$name'
 import { Route as AuthCallbackRouteImport } from './routes/auth.callback'
@@ -59,6 +60,11 @@ const AktiviteterRoute = AktiviteterRouteImport.update({
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const InviteTokenRoute = InviteTokenRouteImport.update({
+  id: '/invite/$token',
+  path: '/invite/$token',
   getParentRoute: () => rootRouteImport,
 } as any)
 const FTokenRoute = FTokenRouteImport.update({
@@ -118,6 +124,7 @@ export interface FileRoutesByFullPath {
   '/auth/callback': typeof AuthCallbackRoute
   '/child/$name': typeof ChildNameRouteWithChildren
   '/f/$token': typeof FTokenRoute
+  '/invite/$token': typeof InviteTokenRoute
   '/child/$name/bucketlist': typeof ChildNameBucketlistRoute
   '/child/$name/calendar': typeof ChildNameCalendarRoute
   '/child/$name/favorites': typeof ChildNameFavoritesRoute
@@ -135,6 +142,7 @@ export interface FileRoutesByTo {
   '/parent': typeof ParentRoute
   '/auth/callback': typeof AuthCallbackRoute
   '/f/$token': typeof FTokenRoute
+  '/invite/$token': typeof InviteTokenRoute
   '/child/$name/bucketlist': typeof ChildNameBucketlistRoute
   '/child/$name/calendar': typeof ChildNameCalendarRoute
   '/child/$name/favorites': typeof ChildNameFavoritesRoute
@@ -154,6 +162,7 @@ export interface FileRoutesById {
   '/auth/callback': typeof AuthCallbackRoute
   '/child/$name': typeof ChildNameRouteWithChildren
   '/f/$token': typeof FTokenRoute
+  '/invite/$token': typeof InviteTokenRoute
   '/child/$name/bucketlist': typeof ChildNameBucketlistRoute
   '/child/$name/calendar': typeof ChildNameCalendarRoute
   '/child/$name/favorites': typeof ChildNameFavoritesRoute
@@ -174,6 +183,7 @@ export interface FileRouteTypes {
     | '/auth/callback'
     | '/child/$name'
     | '/f/$token'
+    | '/invite/$token'
     | '/child/$name/bucketlist'
     | '/child/$name/calendar'
     | '/child/$name/favorites'
@@ -191,6 +201,7 @@ export interface FileRouteTypes {
     | '/parent'
     | '/auth/callback'
     | '/f/$token'
+    | '/invite/$token'
     | '/child/$name/bucketlist'
     | '/child/$name/calendar'
     | '/child/$name/favorites'
@@ -209,6 +220,7 @@ export interface FileRouteTypes {
     | '/auth/callback'
     | '/child/$name'
     | '/f/$token'
+    | '/invite/$token'
     | '/child/$name/bucketlist'
     | '/child/$name/calendar'
     | '/child/$name/favorites'
@@ -228,6 +240,7 @@ export interface RootRouteChildren {
   AuthCallbackRoute: typeof AuthCallbackRoute
   ChildNameRoute: typeof ChildNameRouteWithChildren
   FTokenRoute: typeof FTokenRoute
+  InviteTokenRoute: typeof InviteTokenRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -279,6 +292,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/invite/$token': {
+      id: '/invite/$token'
+      path: '/invite/$token'
+      fullPath: '/invite/$token'
+      preLoaderRoute: typeof InviteTokenRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/f/$token': {
@@ -380,6 +400,7 @@ const rootRouteChildren: RootRouteChildren = {
   AuthCallbackRoute: AuthCallbackRoute,
   ChildNameRoute: ChildNameRouteWithChildren,
   FTokenRoute: FTokenRoute,
+  InviteTokenRoute: InviteTokenRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

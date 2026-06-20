@@ -58,6 +58,12 @@ function readChildFamilyCookie(): string | null {
 
 // Resolve the authorized family for this request: parent (Bearer) first, then
 // the child cookie. Returns null if neither yields a family.
+//
+// A parent may belong to several families. The client names the active one via
+// the `x-active-family` header (attached by the family-attacher middleware); we
+// honor it ONLY after confirming the user is a member of it — so it can never be
+// spoofed into a family the caller doesn't belong to. Without a (valid) header
+// we fall back to any membership, preserving the single-family behaviour.
 async function resolveFamilyId(): Promise<string | null> {
   const authz = getRequestHeader("authorization");
   if (authz && authz.startsWith("Bearer ")) {
@@ -66,10 +72,21 @@ async function resolveFamilyId(): Promise<string | null> {
       const { data, error } = await supabaseAdmin.auth.getUser(token);
       const uid = data?.user?.id;
       if (!error && uid) {
+        const requested = getRequestHeader("x-active-family");
+        if (requested) {
+          const { data: active } = await supabaseAdmin
+            .from("family_members")
+            .select("family_id")
+            .eq("user_id", uid)
+            .eq("family_id", requested)
+            .maybeSingle();
+          if (active?.family_id) return active.family_id;
+        }
         const { data: m } = await supabaseAdmin
           .from("family_members")
           .select("family_id")
           .eq("user_id", uid)
+          .order("created_at", { ascending: true })
           .limit(1)
           .maybeSingle();
         if (m?.family_id) return m.family_id;

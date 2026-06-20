@@ -16,6 +16,9 @@ import {
   sfListChildren,
   sfListRewards,
   sfRemoveCompletion,
+  sfResendFamilyInvite,
+  sfRevokeFamilyInvite,
+  sfSendFamilyInvite,
   sfSetBucketItemDone,
   sfToggleFavorite,
   sfUpdateBucketItem,
@@ -212,16 +215,27 @@ export type FamilyAccessToken = {
   last_used_at: string | null;
 };
 
-// Link the signed-in parent to a family (RLS allows adding yourself).
-export async function addFamilyMember(familyId: string, userId: string) {
+// Link the signed-in parent to a family (RLS allows adding yourself, and only to
+// a member-less family). The creator/claimer becomes the family OWNER; invited
+// parents never use this path — they join via accept_family_invite (role parent).
+export async function addFamilyMember(
+  familyId: string,
+  userId: string,
+  role: "owner" | "parent" = "owner",
+) {
   const { error } = await supabase
     .from("family_members")
-    .upsert({ family_id: familyId, user_id: userId }, { onConflict: "family_id,user_id" });
+    .upsert({ family_id: familyId, user_id: userId, role }, { onConflict: "family_id,user_id" });
   if (error) throw error;
 }
 
 export async function fetchMyFamilyIds(): Promise<string[]> {
-  const { data, error } = await supabase.from("family_members").select("family_id");
+  // Oldest membership first, so the "default" family (when no active family is
+  // cached) is stable across calls rather than arbitrary.
+  const { data, error } = await supabase
+    .from("family_members")
+    .select("family_id, created_at")
+    .order("created_at", { ascending: true });
   if (error) throw error;
   return (data ?? []).map((r) => r.family_id);
 }
@@ -284,6 +298,91 @@ export async function redeemFamilyToken(token: string): Promise<string | null> {
   const { data, error } = await supabase.rpc("redeem_family_token", { p_token: token });
   if (error) throw error;
   return (data as string | null) ?? null;
+}
+
+// ---------------------------------------------------------------------------
+// Multi-parent: members + invitations
+// ---------------------------------------------------------------------------
+
+export type FamilyRole = "owner" | "parent";
+export type FamilyMember = {
+  id: string;
+  user_id: string;
+  role: FamilyRole;
+  email: string | null;
+  created_at: string;
+  is_self: boolean;
+};
+export type FamilyInvite = {
+  id: string;
+  family_id: string;
+  email: string;
+  role: string;
+  status: "pending" | "accepted" | "revoked";
+  created_at: string;
+  expires_at: string;
+  accepted_at: string | null;
+};
+export type InvitePreview = {
+  family_name: string;
+  inviter_email: string | null;
+  invite_email: string;
+  status: "pending" | "accepted" | "revoked";
+  expired: boolean;
+};
+
+// Members of a family with their emails (DEFINER RPC; member-gated server-side).
+export async function listFamilyMembers(familyId: string): Promise<FamilyMember[]> {
+  const { data, error } = await supabase.rpc("list_family_members", { p_family: familyId });
+  if (error) throw error;
+  return (data ?? []) as FamilyMember[];
+}
+
+// Pending invitations for the family (owner-only via RLS).
+export async function listPendingInvites(familyId: string): Promise<FamilyInvite[]> {
+  const { data, error } = await supabase
+    .from("family_invites")
+    .select("id, family_id, email, role, status, created_at, expires_at, accepted_at")
+    .eq("family_id", familyId)
+    .eq("status", "pending")
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return (data ?? []) as FamilyInvite[];
+}
+
+// Owner sends an invite email (server fn; token generated + emailed server-side).
+export async function sendFamilyInvite(email: string, origin: string) {
+  await sfSendFamilyInvite({ data: { email, origin } });
+}
+
+export async function resendFamilyInvite(id: string, origin: string) {
+  await sfResendFamilyInvite({ data: { id, origin } });
+}
+
+export async function revokeFamilyInvite(id: string) {
+  await sfRevokeFamilyInvite({ data: { id } });
+}
+
+// Owner removes a co-parent (DEFINER RPC enforces owner + not-owner target).
+export async function removeFamilyMember(memberId: string) {
+  const { error } = await supabase.rpc("remove_family_member", { p_member_id: memberId });
+  if (error) throw error;
+}
+
+// Read-only invite context for the /invite page (callable before login).
+export async function getInvitePreview(token: string): Promise<InvitePreview | null> {
+  const { data, error } = await supabase.rpc("get_invite_preview", { p_token: token });
+  if (error) throw error;
+  const row = (data as InvitePreview[] | null)?.[0];
+  return row ?? null;
+}
+
+// Accept an invite as the signed-in user (DEFINER RPC; email must match).
+// Returns the family id joined.
+export async function acceptFamilyInvite(token: string): Promise<string> {
+  const { data, error } = await supabase.rpc("accept_family_invite", { p_token: token });
+  if (error) throw error;
+  return data as string;
 }
 
 export async function fetchCategories(): Promise<Category[]> {

@@ -12,11 +12,18 @@ import {
   fetchCompletionsForDate,
   fetchFamily,
   fetchMyFamilyIds,
+  listFamilyMembers,
+  listPendingInvites,
+  removeFamilyMember,
+  resendFamilyInvite,
+  revokeFamilyInvite,
+  sendFamilyInvite,
   setPointsEnabled,
   todayDate,
   updateChild,
   updateFamilyName,
   type Child,
+  type FamilyMember,
 } from "@/lib/db";
 import { getCurrentFamilyId, setCurrentFamilyId } from "@/lib/family";
 import { useSession, signOut } from "@/lib/auth";
@@ -33,15 +40,28 @@ import {
 } from "@/components/ui/alert-dialog";
 import { OneTimeNotice } from "@/components/OneTimeNotice";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   ArrowLeft,
   ClipboardList,
   Copy,
+  Crown,
   Gift,
   LogOut,
+  Mail,
   Pencil,
   Plus,
   RefreshCw,
+  Send,
   Trash2,
+  UserPlus,
+  X,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { useEffect, useMemo, useState } from "react";
@@ -67,15 +87,18 @@ function ParentPage() {
     if (!loading && !session) navigate({ to: "/login", replace: true });
   }, [loading, session, navigate]);
 
-  // Resolve the active family from MEMBERSHIP (auth.uid()) — authoritative — and
-  // only fall back to the (user-scoped) cache for a legacy pre-auth family the
-  // parent can still claim. Then backfill/claim membership so token admin works.
+  // Resolve the active family from MEMBERSHIP (auth.uid()) — authoritative. A
+  // parent may belong to several families, so honor the cached ACTIVE family
+  // (e.g. one just joined via an invite) whenever it is still a real membership;
+  // only fall back to an arbitrary membership when there is no valid cache. Then
+  // backfill/claim membership so token admin works.
   useEffect(() => {
     if (!session?.user) return;
     let active = true;
     (async () => {
       const ids = await fetchMyFamilyIds();
-      const id: string | null = ids[0] ?? getCurrentFamilyId();
+      const cached = getCurrentFamilyId();
+      const id: string | null = cached && ids.includes(cached) ? cached : (ids[0] ?? cached);
       if (!active) return;
       if (id) setCurrentFamilyId(id);
       setFamilyId(id);
@@ -129,8 +152,8 @@ function ParentPage() {
         id="whats-new-v1"
         userId={session.user.id}
         title="Nyhet!"
-        body="Nu kan du aktivera ett valfritt poängsystem och skapa egna belöningar som barnen kan spara till."
-        actionLabel="Kolla in funktionen"
+        body="Nu kan du aktivera ett poängsystem med egna belöningar och dessutom bjuda in en till förälder så att ni kan hantera familjen tillsammans."
+        actionLabel="Utforska nyheterna"
         onAction={() =>
           document
             .getElementById("points-toggle")
@@ -178,6 +201,13 @@ function ParentPage() {
 
       {familyId && (
         <section className="mb-8">
+          <h2 className="mb-3 text-lg">Föräldrar</h2>
+          <FamilyParents familyId={familyId} />
+        </section>
+      )}
+
+      {familyId && (
+        <section className="mb-8">
           <h2 className="mb-3 text-lg">Barnens åtkomst</h2>
           <ChildAccess familyId={familyId} />
         </section>
@@ -198,6 +228,223 @@ function ParentPage() {
         </section>
       )}
     </main>
+  );
+}
+
+// "Föräldrar": list members + their roles, invite co-parents, and manage pending
+// invitations. Invite/remove/revoke/resend are owner-only (also enforced
+// server-side); non-owners see a read-only list.
+function FamilyParents({ familyId }: { familyId: string }) {
+  const qc = useQueryClient();
+  const [origin, setOrigin] = useState("");
+  useEffect(() => setOrigin(window.location.origin), []);
+
+  const membersQ = useQuery({
+    queryKey: ["family-members", familyId],
+    queryFn: () => listFamilyMembers(familyId),
+  });
+  const isOwner = membersQ.data?.some((m) => m.is_self && m.role === "owner") ?? false;
+
+  const invitesQ = useQuery({
+    queryKey: ["family-invites", familyId],
+    queryFn: () => listPendingInvites(familyId),
+    enabled: isOwner,
+  });
+
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [email, setEmail] = useState("");
+  const [confirmRemove, setConfirmRemove] = useState<FamilyMember | null>(null);
+
+  const invalidateInvites = () => qc.invalidateQueries({ queryKey: ["family-invites", familyId] });
+
+  const invite = useMutation({
+    mutationFn: () => sendFamilyInvite(email.trim(), origin),
+    onSuccess: () => {
+      invalidateInvites();
+      setEmail("");
+      setInviteOpen(false);
+      toast.success("Inbjudan skickad");
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Kunde inte skicka inbjudan"),
+  });
+
+  const resend = useMutation({
+    mutationFn: (id: string) => resendFamilyInvite(id, origin),
+    onSuccess: () => {
+      invalidateInvites();
+      toast.success("Inbjudan skickad igen");
+    },
+    onError: () => toast.error("Kunde inte skicka om inbjudan"),
+  });
+
+  const revoke = useMutation({
+    mutationFn: (id: string) => revokeFamilyInvite(id),
+    onSuccess: () => {
+      invalidateInvites();
+      toast.success("Inbjudan återkallad");
+    },
+    onError: () => toast.error("Kunde inte återkalla inbjudan"),
+  });
+
+  const remove = useMutation({
+    mutationFn: (memberId: string) => removeFamilyMember(memberId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["family-members", familyId] });
+      setConfirmRemove(null);
+      toast.success("Föräldern togs bort");
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : "Kunde inte ta bort"),
+  });
+
+  const members = membersQ.data ?? [];
+  const invites = invitesQ.data ?? [];
+  const busy = invite.isPending;
+
+  return (
+    <div className="card-soft space-y-4 p-4">
+      {/* Members */}
+      {membersQ.isLoading ? (
+        <div className="h-12 animate-pulse rounded-xl bg-muted" />
+      ) : (
+        <ul className="space-y-2">
+          {members.map((m) => {
+            const canRemove = isOwner && !m.is_self && m.role !== "owner";
+            return (
+              <li key={m.id} className="flex items-center gap-3 rounded-2xl bg-white p-3 shadow-sm">
+                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-sun-soft to-mint-soft text-xl shadow-inner">
+                  {m.role === "owner" ? "👑" : "👤"}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-semibold">
+                    {m.email ?? "Förälder"}
+                    {m.is_self && <span className="text-muted-foreground"> (du)</span>}
+                  </div>
+                  <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                    {m.role === "owner" ? (
+                      <>
+                        <Crown className="h-3 w-3" /> Ägare
+                      </>
+                    ) : (
+                      "Förälder"
+                    )}
+                  </div>
+                </div>
+                {canRemove && (
+                  <button
+                    onClick={() => setConfirmRemove(m)}
+                    className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-destructive hover:bg-destructive/10"
+                    aria-label="Ta bort förälder"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      {/* Pending invites (owner only) */}
+      {isOwner && invites.length > 0 && (
+        <div className="space-y-2 border-t border-border/60 pt-4">
+          <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Väntande inbjudningar
+          </div>
+          {invites.map((inv) => (
+            <div key={inv.id} className="flex items-center gap-2 rounded-2xl bg-muted/60 p-3">
+              <Mail className="h-4 w-4 shrink-0 text-muted-foreground" />
+              <div className="min-w-0 flex-1 truncate text-sm">{inv.email}</div>
+              <button
+                onClick={() => resend.mutate(inv.id)}
+                disabled={resend.isPending}
+                className="grid h-8 w-8 place-items-center rounded-full text-muted-foreground hover:bg-white disabled:opacity-50"
+                aria-label="Skicka om"
+                title="Skicka om"
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+              </button>
+              <button
+                onClick={() => revoke.mutate(inv.id)}
+                disabled={revoke.isPending}
+                className="grid h-8 w-8 place-items-center rounded-full text-destructive hover:bg-destructive/10 disabled:opacity-50"
+                aria-label="Återkalla"
+                title="Återkalla"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Invite button (owner only) */}
+      {isOwner && (
+        <button
+          onClick={() => setInviteOpen(true)}
+          className="flex w-full items-center justify-center gap-2 rounded-full bg-white py-3 text-sm font-bold shadow-sm transition active:scale-95"
+        >
+          <UserPlus className="h-4 w-4" /> Bjud in förälder
+        </button>
+      )}
+
+      {/* Invite dialog */}
+      <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Bjud in förälder</DialogTitle>
+            <DialogDescription>
+              Vi mejlar en länk för att gå med i familjen. Länken gäller i 7 dagar.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="relative">
+            <Mail className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && email.trim() && !busy && invite.mutate()}
+              placeholder="namn@exempel.se"
+              autoFocus
+              className="w-full rounded-2xl bg-muted py-3 pl-11 pr-4 text-sm outline-none focus:ring-2 focus:ring-primary"
+            />
+          </div>
+          <DialogFooter>
+            <button
+              onClick={() => invite.mutate()}
+              disabled={!email.trim() || busy}
+              className="flex w-full items-center justify-center gap-2 rounded-full bg-primary py-3 text-sm font-bold text-primary-foreground shadow transition active:scale-95 disabled:opacity-40"
+            >
+              <Send className="h-4 w-4" /> {busy ? "Skickar..." : "Skicka inbjudan"}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Remove confirmation */}
+      <AlertDialog open={!!confirmRemove} onOpenChange={(o) => !o && setConfirmRemove(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Ta bort förälder?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmRemove?.email ?? "Föräldern"} förlorar åtkomst till familjen. Du kan bjuda in
+              personen igen senare.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Avbryt</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                if (confirmRemove) remove.mutate(confirmRemove.id);
+              }}
+              disabled={remove.isPending}
+            >
+              Ta bort
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
   );
 }
 

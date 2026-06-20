@@ -94,6 +94,9 @@ function ChildDayPage() {
   const qc = useQueryClient();
   const date = todayDate();
   const [search, setSearch] = useState("");
+  // Activities with a completion mutation in flight — locked until it settles so a
+  // child can't toggle the same card twice before the first round-trip finishes.
+  const [pendingActs, setPendingActs] = useState<Set<string>>(new Set());
 
   const childQ = useQuery({ queryKey: ["child", name], queryFn: () => fetchChildByName(name) });
   const child = childQ.data;
@@ -115,17 +118,66 @@ function ChildDayPage() {
     enabled: !!child && pointsEnabled,
   });
 
+  // Optimistic: mark the activity done (and bump points) instantly, sync in the
+  // background, roll back if the save fails. Mirrors the `favorite` mutation below.
   const add = useMutation({
     mutationFn: (activityId: string) => addCompletion(child!.id, activityId),
-    onSuccess: () => {
+    onMutate: async (activityId: string) => {
+      const compsKey = ["completions", child!.id, date];
+      const pointsKey = ["child-points", child!.id];
+      await qc.cancelQueries({ queryKey: compsKey });
+      await qc.cancelQueries({ queryKey: pointsKey });
+      const prevComps = qc.getQueryData<Completion[]>(compsKey);
+      const prevPoints = qc.getQueryData<number>(pointsKey);
+      const now = new Date().toISOString();
+      const optimistic: Completion = {
+        id: `optimistic-${activityId}-${now}`,
+        child_id: child!.id,
+        activity_id: activityId,
+        completed_at: now,
+        completed_date: date,
+      };
+      qc.setQueryData<Completion[]>(compsKey, (old) => [...(old ?? []), optimistic]);
+      if (pointsEnabled) {
+        const pts = actsQ.data?.find((a) => a.id === activityId)?.points ?? 0;
+        if (pts) qc.setQueryData<number>(pointsKey, (old) => (old ?? 0) + pts);
+      }
+      return { prevComps, prevPoints };
+    },
+    onSuccess: () => toast.success(randomCheer(child!.name)),
+    onError: (_e, _v, ctx) => {
+      if (ctx?.prevComps) qc.setQueryData(["completions", child!.id, date], ctx.prevComps);
+      if (ctx?.prevPoints != null) qc.setQueryData(["child-points", child!.id], ctx.prevPoints);
+      toast.error("Kunde inte spara aktiviteten");
+    },
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: ["completions", child!.id] });
       qc.invalidateQueries({ queryKey: ["child-points", child!.id] });
-      toast.success(randomCheer(child!.name));
     },
   });
   const remove = useMutation({
     mutationFn: (id: string) => removeCompletion(id),
-    onSuccess: () => {
+    onMutate: async (id: string) => {
+      const compsKey = ["completions", child!.id, date];
+      const pointsKey = ["child-points", child!.id];
+      await qc.cancelQueries({ queryKey: compsKey });
+      await qc.cancelQueries({ queryKey: pointsKey });
+      const prevComps = qc.getQueryData<Completion[]>(compsKey);
+      const prevPoints = qc.getQueryData<number>(pointsKey);
+      const removed = prevComps?.find((c) => c.id === id);
+      qc.setQueryData<Completion[]>(compsKey, (old) => old?.filter((c) => c.id !== id));
+      if (pointsEnabled && removed) {
+        const pts = actsQ.data?.find((a) => a.id === removed.activity_id)?.points ?? 0;
+        if (pts) qc.setQueryData<number>(pointsKey, (old) => Math.max(0, (old ?? 0) - pts));
+      }
+      return { prevComps, prevPoints };
+    },
+    onError: (_e, _v, ctx) => {
+      if (ctx?.prevComps) qc.setQueryData(["completions", child!.id, date], ctx.prevComps);
+      if (ctx?.prevPoints != null) qc.setQueryData(["child-points", child!.id], ctx.prevPoints);
+      toast.error("Kunde inte ta bort aktiviteten");
+    },
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: ["completions", child!.id] });
       qc.invalidateQueries({ queryKey: ["child-points", child!.id] });
     },
@@ -196,9 +248,17 @@ function ChildDayPage() {
   const matches = (a: Activity) => q === "" || a.name.toLowerCase().includes(q);
 
   const onToggle = (act: Activity) => {
+    if (pendingActs.has(act.id)) return;
     const existing = completionByActivity.get(act.id);
-    if (existing) remove.mutate(existing.id);
-    else add.mutate(act.id);
+    setPendingActs((s) => new Set(s).add(act.id));
+    const unlock = () =>
+      setPendingActs((s) => {
+        const next = new Set(s);
+        next.delete(act.id);
+        return next;
+      });
+    if (existing) remove.mutate(existing.id, { onSettled: unlock });
+    else add.mutate(act.id, { onSettled: unlock });
   };
   const onToggleFav = (act: Activity) => favorite.mutate({ id: act.id, value: !act.is_favorite });
 
@@ -341,6 +401,7 @@ function ChildDayPage() {
                 onToggle={onToggle}
                 onToggleFav={onToggleFav}
                 disabled={!child}
+                pendingIds={pendingActs}
                 searching={q !== ""}
                 pointsEnabled={pointsEnabled}
               />
@@ -356,6 +417,7 @@ function ChildDayPage() {
               onToggle={onToggle}
               onToggleFav={onToggleFav}
               disabled={!child}
+              pendingIds={pendingActs}
               pointsEnabled={pointsEnabled}
             />
           );
@@ -444,6 +506,7 @@ function FlatCategory({
   onToggle,
   onToggleFav,
   disabled,
+  pendingIds,
   pointsEnabled,
 }: {
   category: Category;
@@ -453,6 +516,7 @@ function FlatCategory({
   onToggle: (a: Activity) => void;
   onToggleFav: (a: Activity) => void;
   disabled?: boolean;
+  pendingIds: Set<string>;
   pointsEnabled?: boolean;
 }) {
   const doneCount = activities.filter((a) => completionByActivity.has(a.id)).length;
@@ -475,7 +539,7 @@ function FlatCategory({
             color={color}
             onToggle={onToggle}
             onToggleFav={onToggleFav}
-            disabled={disabled}
+            disabled={disabled || pendingIds.has(act.id)}
             pointsEnabled={pointsEnabled}
           />
         ))}
@@ -492,6 +556,7 @@ function SubcategorizedCategory({
   onToggle,
   onToggleFav,
   disabled,
+  pendingIds,
   searching,
   pointsEnabled,
 }: {
@@ -502,6 +567,7 @@ function SubcategorizedCategory({
   onToggle: (a: Activity) => void;
   onToggleFav: (a: Activity) => void;
   disabled?: boolean;
+  pendingIds: Set<string>;
   searching: boolean;
   pointsEnabled?: boolean;
 }) {
@@ -568,7 +634,7 @@ function SubcategorizedCategory({
                       color={color}
                       onToggle={onToggle}
                       onToggleFav={onToggleFav}
-                      disabled={disabled}
+                      disabled={disabled || pendingIds.has(act.id)}
                       pointsEnabled={pointsEnabled}
                     />
                   ))}

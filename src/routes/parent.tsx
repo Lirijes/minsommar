@@ -1,27 +1,21 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  addActivity,
   addChild,
   backfillActivityPoints,
   createFamilyToken,
-  deleteActivity,
   deleteChild,
   ensureFamilyMembership,
   fetchActiveFamilyToken,
   fetchActivities,
-  fetchCategories,
   fetchChildren,
   fetchCompletionsForDate,
   fetchFamily,
   fetchMyFamilyIds,
   setPointsEnabled,
   todayDate,
-  updateActivity,
   updateChild,
   updateFamilyName,
-  SUBCATEGORIES,
-  type Activity,
   type Child,
 } from "@/lib/db";
 import { getCurrentFamilyId, setCurrentFamilyId } from "@/lib/family";
@@ -37,7 +31,17 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { ArrowLeft, Copy, Gift, LogOut, Pencil, Plus, RefreshCw, Trash2, X } from "lucide-react";
+import {
+  ArrowLeft,
+  ClipboardList,
+  Copy,
+  Gift,
+  LogOut,
+  Pencil,
+  Plus,
+  RefreshCw,
+  Trash2,
+} from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -85,8 +89,6 @@ function ParentPage() {
   }, [session, qc]);
 
   const childrenQ = useQuery({ queryKey: ["children"], queryFn: fetchChildren });
-  const catsQ = useQuery({ queryKey: ["categories"], queryFn: fetchCategories });
-  const actsQ = useQuery({ queryKey: ["activities"], queryFn: fetchActivities });
   // Shares the ["family", familyId] cache with ManageFamily (deduped).
   const familyQ = useQuery({
     queryKey: ["family", familyId],
@@ -124,20 +126,40 @@ function ParentPage() {
 
       {familyId && <ManageFamily familyId={familyId} />}
 
-      {familyId && pointsEnabled && (
-        <Link
-          to="/beloningar"
-          className="card-soft mb-6 flex items-center gap-3 p-4 transition active:scale-[0.99]"
-        >
-          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-sun-soft to-mint-soft text-2xl shadow-inner">
-            <Gift className="h-5 w-5" />
-          </span>
-          <div className="flex-1">
-            <div className="font-bold">Belöningar</div>
-            <div className="text-xs text-muted-foreground">Skapa och hantera belöningar</div>
-          </div>
-          <ArrowLeft className="h-5 w-5 rotate-180 text-muted-foreground" />
-        </Link>
+      {familyId && (
+        <div className="mb-6 space-y-3">
+          <Link
+            to="/aktiviteter"
+            className="card-soft flex items-center gap-3 p-4 transition active:scale-[0.99]"
+          >
+            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-sun-soft to-mint-soft text-2xl shadow-inner">
+              <ClipboardList className="h-5 w-5" />
+            </span>
+            <div className="flex-1">
+              <div className="font-bold">Aktiviteter</div>
+              <div className="text-xs text-muted-foreground">
+                Namn, redigera och ta bort familjens aktiviteter.
+              </div>
+            </div>
+            <ArrowLeft className="h-5 w-5 rotate-180 text-muted-foreground" />
+          </Link>
+
+          {pointsEnabled && (
+            <Link
+              to="/beloningar"
+              className="card-soft flex items-center gap-3 p-4 transition active:scale-[0.99]"
+            >
+              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-sun-soft to-mint-soft text-2xl shadow-inner">
+                <Gift className="h-5 w-5" />
+              </span>
+              <div className="flex-1">
+                <div className="font-bold">Belöningar</div>
+                <div className="text-xs text-muted-foreground">Skapa och hantera belöningar</div>
+              </div>
+              <ArrowLeft className="h-5 w-5 rotate-180 text-muted-foreground" />
+            </Link>
+          )}
+        </div>
       )}
 
       {familyId && (
@@ -161,25 +183,6 @@ function ParentPage() {
           </div>
         </section>
       )}
-
-      <section>
-        <h2 className="mb-3 text-lg">Aktiviteter</h2>
-        <p className="mb-4 text-sm text-muted-foreground">
-          Lägg till, ändra eller ta bort aktiviteter.
-        </p>
-        <div className="space-y-5">
-          {catsQ.data?.map((cat) => (
-            <ManageCategory
-              key={cat.id}
-              categoryId={cat.id}
-              categoryName={cat.name}
-              categorySlug={cat.slug}
-              activities={actsQ.data?.filter((a) => a.category_id === cat.id) ?? []}
-              pointsEnabled={pointsEnabled}
-            />
-          ))}
-        </div>
-      </section>
     </main>
   );
 }
@@ -609,328 +612,5 @@ function AddChildCard({ familyId, childCount }: { familyId: string; childCount: 
     >
       <Plus className="h-5 w-5" /> Lägg till barn
     </button>
-  );
-}
-
-function ManageCategory({
-  categoryId,
-  categoryName,
-  categorySlug,
-  activities,
-  pointsEnabled,
-}: {
-  categoryId: string;
-  categoryName: string;
-  categorySlug: string;
-  activities: Activity[];
-  pointsEnabled: boolean;
-}) {
-  const qc = useQueryClient();
-  const subcategorized = categorySlug === "kreativitet";
-  const [adding, setAdding] = useState(false);
-  const [name, setName] = useState("");
-  const [emoji, setEmoji] = useState("✨");
-  const [subcategory, setSubcategory] = useState(SUBCATEGORIES[0].slug);
-  const [givePoints, setGivePoints] = useState(false);
-  const [points, setPoints] = useState("10");
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editName, setEditName] = useState("");
-  const [editEmoji, setEditEmoji] = useState("");
-  const [editGivePoints, setEditGivePoints] = useState(false);
-  const [editPoints, setEditPoints] = useState("10");
-
-  const invalidate = () => qc.invalidateQueries({ queryKey: ["activities"] });
-
-  // Parse a points field into a non-negative int, or null when the toggle is off.
-  const parsePoints = (on: boolean, value: string): number | null =>
-    on ? Math.max(0, Math.floor(Number(value) || 0)) : null;
-
-  const addM = useMutation({
-    mutationFn: () =>
-      addActivity(
-        categoryId,
-        name.trim(),
-        emoji.trim(),
-        subcategorized ? subcategory : null,
-        parsePoints(givePoints, points),
-      ),
-    onSuccess: () => {
-      invalidate();
-      setName("");
-      setEmoji("✨");
-      setGivePoints(false);
-      setPoints("10");
-      setAdding(false);
-      toast.success("Aktivitet tillagd");
-    },
-  });
-  const updM = useMutation({
-    mutationFn: (id: string) =>
-      updateActivity(
-        id,
-        editName.trim(),
-        editEmoji.trim(),
-        parsePoints(editGivePoints, editPoints),
-      ),
-    onSuccess: () => {
-      invalidate();
-      setEditingId(null);
-    },
-  });
-  const delM = useMutation({
-    mutationFn: (id: string) => deleteActivity(id),
-    onSuccess: () => {
-      invalidate();
-      toast.success("Borttagen");
-    },
-  });
-
-  return (
-    <div className="card-soft p-4">
-      <div className="mb-3 flex items-center justify-between">
-        <h3 className="font-bold">{categoryName}</h3>
-        <button
-          onClick={() => {
-            // Opening: default to giving 10 points when the system is on (editable).
-            if (!adding) {
-              setGivePoints(pointsEnabled);
-              setPoints("10");
-            }
-            setAdding((s) => !s);
-          }}
-          className="grid h-8 w-8 place-items-center rounded-full bg-primary text-primary-foreground shadow"
-          aria-label="Lägg till"
-        >
-          {adding ? <X className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
-        </button>
-      </div>
-
-      {adding && (
-        <div className="mb-3 flex flex-col gap-2 rounded-2xl bg-peach-soft p-2">
-          {subcategorized && (
-            <select
-              value={subcategory}
-              onChange={(e) => setSubcategory(e.target.value)}
-              className="rounded-xl bg-white px-3 py-2 text-sm"
-            >
-              {SUBCATEGORIES.map((s) => (
-                <option key={s.slug} value={s.slug}>
-                  {s.emoji} {s.label}
-                </option>
-              ))}
-            </select>
-          )}
-          <div className="flex gap-2">
-            <input
-              value={emoji}
-              onChange={(e) => setEmoji(e.target.value)}
-              className="w-14 rounded-xl bg-white px-2 py-2 text-center text-xl"
-              maxLength={4}
-            />
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Aktivitetens namn"
-              className="flex-1 rounded-xl bg-white px-3 py-2 text-sm"
-            />
-            <button
-              onClick={() => name.trim() && addM.mutate()}
-              disabled={!name.trim()}
-              className="rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:opacity-50"
-            >
-              Lägg till
-            </button>
-          </div>
-          {pointsEnabled && (
-            <div className="flex items-center gap-2 rounded-xl bg-white px-3 py-2">
-              <span className="flex-1 text-sm font-semibold">Ge poäng</span>
-              {givePoints && (
-                <input
-                  type="number"
-                  min={0}
-                  value={points}
-                  onChange={(e) => setPoints(e.target.value)}
-                  className="w-20 rounded-xl bg-muted px-2 py-1.5 text-center text-sm outline-none"
-                  aria-label="Antal poäng"
-                />
-              )}
-              <Switch checked={givePoints} onCheckedChange={setGivePoints} aria-label="Ge poäng" />
-            </div>
-          )}
-        </div>
-      )}
-
-      {subcategorized ? (
-        <div className="space-y-3">
-          {SUBCATEGORIES.map((sub) => {
-            const subActs = activities.filter((a) => a.subcategory === sub.slug);
-            if (subActs.length === 0) return null;
-            return (
-              <div key={sub.slug}>
-                <div className="mb-1.5 px-1 text-xs font-bold text-muted-foreground">
-                  {sub.emoji} {sub.label}
-                </div>
-                <ul className="space-y-1.5">
-                  {subActs.map((a) => (
-                    <ActivityRow
-                      key={a.id}
-                      a={a}
-                      editingId={editingId}
-                      editEmoji={editEmoji}
-                      editName={editName}
-                      setEditEmoji={setEditEmoji}
-                      setEditName={setEditName}
-                      setEditingId={setEditingId}
-                      pointsEnabled={pointsEnabled}
-                      editGivePoints={editGivePoints}
-                      editPoints={editPoints}
-                      setEditGivePoints={setEditGivePoints}
-                      setEditPoints={setEditPoints}
-                      onSave={() => updM.mutate(a.id)}
-                      onDelete={() => delM.mutate(a.id)}
-                    />
-                  ))}
-                </ul>
-              </div>
-            );
-          })}
-        </div>
-      ) : (
-        <ul className="space-y-1.5">
-          {activities.map((a) => (
-            <ActivityRow
-              key={a.id}
-              a={a}
-              editingId={editingId}
-              editEmoji={editEmoji}
-              editName={editName}
-              setEditEmoji={setEditEmoji}
-              setEditName={setEditName}
-              setEditingId={setEditingId}
-              onSave={() => updM.mutate(a.id)}
-              onDelete={() => delM.mutate(a.id)}
-            />
-          ))}
-          {activities.length === 0 && (
-            <li className="text-center text-sm text-muted-foreground">Inga aktiviteter än.</li>
-          )}
-        </ul>
-      )}
-    </div>
-  );
-}
-
-function ActivityRow({
-  a,
-  editingId,
-  editEmoji,
-  editName,
-  setEditEmoji,
-  setEditName,
-  setEditingId,
-  pointsEnabled,
-  editGivePoints,
-  editPoints,
-  setEditGivePoints,
-  setEditPoints,
-  onSave,
-  onDelete,
-}: {
-  a: Activity;
-  editingId: string | null;
-  editEmoji: string;
-  editName: string;
-  setEditEmoji: (v: string) => void;
-  setEditName: (v: string) => void;
-  setEditingId: (v: string | null) => void;
-  pointsEnabled: boolean;
-  editGivePoints: boolean;
-  editPoints: string;
-  setEditGivePoints: (v: boolean) => void;
-  setEditPoints: (v: string) => void;
-  onSave: () => void;
-  onDelete: () => void;
-}) {
-  return (
-    <li>
-      {editingId === a.id ? (
-        <div className="flex flex-col gap-2 rounded-2xl bg-sand-soft p-2">
-          <div className="flex gap-2">
-            <input
-              value={editEmoji}
-              onChange={(e) => setEditEmoji(e.target.value)}
-              className="w-12 rounded-xl bg-white px-2 py-1.5 text-center text-lg"
-              maxLength={4}
-            />
-            <input
-              value={editName}
-              onChange={(e) => setEditName(e.target.value)}
-              className="flex-1 rounded-xl bg-white px-3 py-1.5 text-sm"
-            />
-            <button
-              onClick={onSave}
-              className="rounded-xl bg-primary px-3 text-xs font-semibold text-primary-foreground"
-            >
-              Spara
-            </button>
-            <button onClick={() => setEditingId(null)} className="rounded-xl bg-white px-2 text-xs">
-              Avbryt
-            </button>
-          </div>
-          {pointsEnabled && (
-            <div className="flex items-center gap-2 rounded-xl bg-white px-3 py-2">
-              <span className="flex-1 text-sm font-semibold">Ge poäng</span>
-              {editGivePoints && (
-                <input
-                  type="number"
-                  min={0}
-                  value={editPoints}
-                  onChange={(e) => setEditPoints(e.target.value)}
-                  className="w-20 rounded-xl bg-muted px-2 py-1.5 text-center text-sm outline-none"
-                  aria-label="Antal poäng"
-                />
-              )}
-              <Switch
-                checked={editGivePoints}
-                onCheckedChange={setEditGivePoints}
-                aria-label="Ge poäng"
-              />
-            </div>
-          )}
-        </div>
-      ) : (
-        <div className="flex items-center gap-2 rounded-2xl bg-white/70 p-2">
-          <span className="text-xl">{a.emoji}</span>
-          <span className="flex-1 text-sm">{a.name}</span>
-          {pointsEnabled && a.points != null && (
-            <span className="rounded-full bg-sun-soft px-2 py-0.5 text-xs font-bold text-foreground">
-              +{a.points} p
-            </span>
-          )}
-          <button
-            onClick={() => {
-              setEditingId(a.id);
-              setEditName(a.name);
-              setEditEmoji(a.emoji);
-              setEditGivePoints(a.points != null);
-              setEditPoints(String(a.points ?? 10));
-            }}
-            className="grid h-8 w-8 place-items-center rounded-full text-muted-foreground hover:bg-peach-soft"
-            aria-label="Ändra"
-          >
-            <Pencil className="h-3.5 w-3.5" />
-          </button>
-          <button
-            onClick={() => {
-              if (confirm(`Ta bort "${a.name}"?`)) onDelete();
-            }}
-            className="grid h-8 w-8 place-items-center rounded-full text-destructive hover:bg-destructive/10"
-            aria-label="Ta bort"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </button>
-        </div>
-      )}
-    </li>
   );
 }

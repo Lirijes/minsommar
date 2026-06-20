@@ -14,6 +14,7 @@ import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as OmSommarRouteImport } from './routes/om-sommar'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as BeloningarRouteImport } from './routes/beloningar'
+import { Route as AktiviteterRouteImport } from './routes/aktiviteter'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as FTokenRouteImport } from './routes/f.$token'
 import { Route as ChildNameRouteImport } from './routes/child.$name'
@@ -48,6 +49,11 @@ const LoginRoute = LoginRouteImport.update({
 const BeloningarRoute = BeloningarRouteImport.update({
   id: '/beloningar',
   path: '/beloningar',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AktiviteterRoute = AktiviteterRouteImport.update({
+  id: '/aktiviteter',
+  path: '/aktiviteter',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -103,6 +109,7 @@ const ChildNameBucketlistRoute = ChildNameBucketlistRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/aktiviteter': typeof AktiviteterRoute
   '/beloningar': typeof BeloningarRoute
   '/login': typeof LoginRoute
   '/om-sommar': typeof OmSommarRoute
@@ -120,6 +127,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/aktiviteter': typeof AktiviteterRoute
   '/beloningar': typeof BeloningarRoute
   '/login': typeof LoginRoute
   '/om-sommar': typeof OmSommarRoute
@@ -137,6 +145,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/aktiviteter': typeof AktiviteterRoute
   '/beloningar': typeof BeloningarRoute
   '/login': typeof LoginRoute
   '/om-sommar': typeof OmSommarRoute
@@ -156,6 +165,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/aktiviteter'
     | '/beloningar'
     | '/login'
     | '/om-sommar'
@@ -173,6 +183,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/aktiviteter'
     | '/beloningar'
     | '/login'
     | '/om-sommar'
@@ -189,6 +200,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/aktiviteter'
     | '/beloningar'
     | '/login'
     | '/om-sommar'
@@ -207,6 +219,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AktiviteterRoute: typeof AktiviteterRoute
   BeloningarRoute: typeof BeloningarRoute
   LoginRoute: typeof LoginRoute
   OmSommarRoute: typeof OmSommarRoute
@@ -252,6 +265,13 @@ declare module '@tanstack/react-router' {
       path: '/beloningar'
       fullPath: '/beloningar'
       preLoaderRoute: typeof BeloningarRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/aktiviteter': {
+      id: '/aktiviteter'
+      path: '/aktiviteter'
+      fullPath: '/aktiviteter'
+      preLoaderRoute: typeof AktiviteterRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -351,6 +371,7 @@ const ChildNameRouteWithChildren = ChildNameRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AktiviteterRoute: AktiviteterRoute,
   BeloningarRoute: BeloningarRoute,
   LoginRoute: LoginRoute,
   OmSommarRoute: OmSommarRoute,

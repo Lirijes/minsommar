@@ -5,7 +5,9 @@ import {
   fetchActivities,
   fetchCategories,
   fetchChildByName,
+  fetchChildPoints,
   fetchCompletionsForDate,
+  fetchFamilySettings,
   randomCheer,
   removeCompletion,
   todayDate,
@@ -15,7 +17,16 @@ import {
   type Category,
   type Completion,
 } from "@/lib/db";
-import { ArrowLeft, CalendarDays, Check, ChevronDown, History, Search, Star, X } from "lucide-react";
+import {
+  ArrowLeft,
+  CalendarDays,
+  Check,
+  ChevronDown,
+  History,
+  Search,
+  Star,
+  X,
+} from "lucide-react";
 import { ChildTabs } from "@/components/ChildTabs";
 import { toast } from "sonner";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -96,17 +107,28 @@ function ChildDayPage() {
     queryFn: () => fetchCompletionsForDate(child!.id, date),
     enabled: !!child,
   });
+  const settingsQ = useQuery({ queryKey: ["family-settings"], queryFn: fetchFamilySettings });
+  const pointsEnabled = settingsQ.data?.points_enabled ?? false;
+  const pointsQ = useQuery({
+    queryKey: ["child-points", child?.id],
+    queryFn: () => fetchChildPoints(child!.id),
+    enabled: !!child && pointsEnabled,
+  });
 
   const add = useMutation({
     mutationFn: (activityId: string) => addCompletion(child!.id, activityId),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["completions", child!.id] });
+      qc.invalidateQueries({ queryKey: ["child-points", child!.id] });
       toast.success(randomCheer(child!.name));
     },
   });
   const remove = useMutation({
     mutationFn: (id: string) => removeCompletion(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["completions", child!.id] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["completions", child!.id] });
+      qc.invalidateQueries({ queryKey: ["child-points", child!.id] });
+    },
   });
   const favorite = useMutation({
     mutationFn: ({ id, value }: { id: string; value: boolean }) => toggleFavorite(id, value),
@@ -154,9 +176,7 @@ function ChildDayPage() {
 
   const orderedCats = useMemo(() => {
     if (!catsQ.data) return [] as Category[];
-    return [...catsQ.data].sort(
-      (a, b) => GOAL_ORDER.indexOf(a.slug) - GOAL_ORDER.indexOf(b.slug),
-    );
+    return [...catsQ.data].sort((a, b) => GOAL_ORDER.indexOf(a.slug) - GOAL_ORDER.indexOf(b.slug));
   }, [catsQ.data]);
 
   const goalsDone = orderedCats.filter((c) => (countByCat.get(c.id) ?? 0) > 0).length;
@@ -180,8 +200,7 @@ function ChildDayPage() {
     if (existing) remove.mutate(existing.id);
     else add.mutate(act.id);
   };
-  const onToggleFav = (act: Activity) =>
-    favorite.mutate({ id: act.id, value: !act.is_favorite });
+  const onToggleFav = (act: Activity) => favorite.mutate({ id: act.id, value: !act.is_favorite });
 
   return (
     <main className="mx-auto min-h-screen max-w-md px-5 pb-24 pt-6">
@@ -232,6 +251,14 @@ function ChildDayPage() {
               Dagens mål
             </div>
           </div>
+          {pointsEnabled && (
+            <div className="rounded-2xl bg-sun-soft px-4 py-2">
+              <div className="text-2xl font-bold text-foreground">{pointsQ.data ?? 0}</div>
+              <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Poäng
+              </div>
+            </div>
+          )}
         </div>
       </header>
 
@@ -261,9 +288,7 @@ function ChildDayPage() {
                 </span>
                 <div className="flex-1">
                   <div className="text-sm font-semibold">{cat.name}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {done ? "Klar" : "Ej klar"}
-                  </div>
+                  <div className="text-xs text-muted-foreground">{done ? "Klar" : "Ej klar"}</div>
                 </div>
                 <span
                   className={`h-3 w-3 rounded-full ${done ? "bg-mint" : "bg-pink"}`}
@@ -275,9 +300,7 @@ function ChildDayPage() {
         </div>
         {allGoalsReached && (
           <div className="mt-3 animate-fade-in rounded-2xl bg-gradient-to-br from-pink-soft via-purple-soft to-mint-soft p-4 text-center shadow-sm">
-            <p className="text-base font-bold">
-              Fantastiskt jobbat! Du har klarat dagens mål! 🎉
-            </p>
+            <p className="text-base font-bold">Fantastiskt jobbat! Du har klarat dagens mål! 🎉</p>
           </div>
         )}
       </section>
@@ -319,6 +342,7 @@ function ChildDayPage() {
                 onToggleFav={onToggleFav}
                 disabled={!child}
                 searching={q !== ""}
+                pointsEnabled={pointsEnabled}
               />
             );
           }
@@ -332,6 +356,7 @@ function ChildDayPage() {
               onToggle={onToggle}
               onToggleFav={onToggleFav}
               disabled={!child}
+              pointsEnabled={pointsEnabled}
             />
           );
         })}
@@ -347,6 +372,7 @@ function ActivityCard({
   onToggle,
   onToggleFav,
   disabled,
+  pointsEnabled,
 }: {
   act: Activity;
   done: Completion | undefined;
@@ -354,6 +380,7 @@ function ActivityCard({
   onToggle: (a: Activity) => void;
   onToggleFav: (a: Activity) => void;
   disabled?: boolean;
+  pointsEnabled?: boolean;
 }) {
   return (
     <button
@@ -365,6 +392,11 @@ function ActivityCard({
     >
       <span className="text-3xl">{act.emoji}</span>
       <span className="pr-6 text-sm font-semibold leading-tight">{act.name}</span>
+      {pointsEnabled && act.points != null && (
+        <span className="mt-1 rounded-full bg-sun-soft px-2 py-0.5 text-[10px] font-bold text-foreground">
+          +{act.points} p
+        </span>
+      )}
 
       {/* Favorite toggle */}
       <span
@@ -412,6 +444,7 @@ function FlatCategory({
   onToggle,
   onToggleFav,
   disabled,
+  pointsEnabled,
 }: {
   category: Category;
   activities: Activity[];
@@ -420,6 +453,7 @@ function FlatCategory({
   onToggle: (a: Activity) => void;
   onToggleFav: (a: Activity) => void;
   disabled?: boolean;
+  pointsEnabled?: boolean;
 }) {
   const doneCount = activities.filter((a) => completionByActivity.has(a.id)).length;
   return (
@@ -442,6 +476,7 @@ function FlatCategory({
             onToggle={onToggle}
             onToggleFav={onToggleFav}
             disabled={disabled}
+            pointsEnabled={pointsEnabled}
           />
         ))}
       </div>
@@ -458,6 +493,7 @@ function SubcategorizedCategory({
   onToggleFav,
   disabled,
   searching,
+  pointsEnabled,
 }: {
   category: Category;
   activities: Activity[];
@@ -467,6 +503,7 @@ function SubcategorizedCategory({
   onToggleFav: (a: Activity) => void;
   disabled?: boolean;
   searching: boolean;
+  pointsEnabled?: boolean;
 }) {
   // Collapsed by default; track which subcategories the user opened.
   const [open, setOpen] = useState<Record<string, boolean>>({});
@@ -532,6 +569,7 @@ function SubcategorizedCategory({
                       onToggle={onToggle}
                       onToggleFav={onToggleFav}
                       disabled={disabled}
+                      pointsEnabled={pointsEnabled}
                     />
                   ))}
                 </div>

@@ -13,11 +13,14 @@ import { Route as ParentRouteImport } from './routes/parent'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as OmSommarRouteImport } from './routes/om-sommar'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as BeloningarRouteImport } from './routes/beloningar'
+import { Route as AktiviteterRouteImport } from './routes/aktiviteter'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as FTokenRouteImport } from './routes/f.$token'
 import { Route as ChildNameRouteImport } from './routes/child.$name'
 import { Route as AuthCallbackRouteImport } from './routes/auth.callback'
 import { Route as ChildNameIndexRouteImport } from './routes/child.$name.index'
+import { Route as ChildNameRewardsRouteImport } from './routes/child.$name.rewards'
 import { Route as ChildNameHistoryRouteImport } from './routes/child.$name.history'
 import { Route as ChildNameFavoritesRouteImport } from './routes/child.$name.favorites'
 import { Route as ChildNameCalendarRouteImport } from './routes/child.$name.calendar'
@@ -41,6 +44,16 @@ const OmSommarRoute = OmSommarRouteImport.update({
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BeloningarRoute = BeloningarRouteImport.update({
+  id: '/beloningar',
+  path: '/beloningar',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AktiviteterRoute = AktiviteterRouteImport.update({
+  id: '/aktiviteter',
+  path: '/aktiviteter',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -68,6 +81,11 @@ const ChildNameIndexRoute = ChildNameIndexRouteImport.update({
   path: '/',
   getParentRoute: () => ChildNameRoute,
 } as any)
+const ChildNameRewardsRoute = ChildNameRewardsRouteImport.update({
+  id: '/rewards',
+  path: '/rewards',
+  getParentRoute: () => ChildNameRoute,
+} as any)
 const ChildNameHistoryRoute = ChildNameHistoryRouteImport.update({
   id: '/history',
   path: '/history',
@@ -91,6 +109,8 @@ const ChildNameBucketlistRoute = ChildNameBucketlistRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/aktiviteter': typeof AktiviteterRoute
+  '/beloningar': typeof BeloningarRoute
   '/login': typeof LoginRoute
   '/om-sommar': typeof OmSommarRoute
   '/onboarding': typeof OnboardingRoute
@@ -102,10 +122,13 @@ export interface FileRoutesByFullPath {
   '/child/$name/calendar': typeof ChildNameCalendarRoute
   '/child/$name/favorites': typeof ChildNameFavoritesRoute
   '/child/$name/history': typeof ChildNameHistoryRoute
+  '/child/$name/rewards': typeof ChildNameRewardsRoute
   '/child/$name/': typeof ChildNameIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/aktiviteter': typeof AktiviteterRoute
+  '/beloningar': typeof BeloningarRoute
   '/login': typeof LoginRoute
   '/om-sommar': typeof OmSommarRoute
   '/onboarding': typeof OnboardingRoute
@@ -116,11 +139,14 @@ export interface FileRoutesByTo {
   '/child/$name/calendar': typeof ChildNameCalendarRoute
   '/child/$name/favorites': typeof ChildNameFavoritesRoute
   '/child/$name/history': typeof ChildNameHistoryRoute
+  '/child/$name/rewards': typeof ChildNameRewardsRoute
   '/child/$name': typeof ChildNameIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/aktiviteter': typeof AktiviteterRoute
+  '/beloningar': typeof BeloningarRoute
   '/login': typeof LoginRoute
   '/om-sommar': typeof OmSommarRoute
   '/onboarding': typeof OnboardingRoute
@@ -132,12 +158,15 @@ export interface FileRoutesById {
   '/child/$name/calendar': typeof ChildNameCalendarRoute
   '/child/$name/favorites': typeof ChildNameFavoritesRoute
   '/child/$name/history': typeof ChildNameHistoryRoute
+  '/child/$name/rewards': typeof ChildNameRewardsRoute
   '/child/$name/': typeof ChildNameIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/aktiviteter'
+    | '/beloningar'
     | '/login'
     | '/om-sommar'
     | '/onboarding'
@@ -149,10 +178,13 @@ export interface FileRouteTypes {
     | '/child/$name/calendar'
     | '/child/$name/favorites'
     | '/child/$name/history'
+    | '/child/$name/rewards'
     | '/child/$name/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/aktiviteter'
+    | '/beloningar'
     | '/login'
     | '/om-sommar'
     | '/onboarding'
@@ -163,10 +195,13 @@ export interface FileRouteTypes {
     | '/child/$name/calendar'
     | '/child/$name/favorites'
     | '/child/$name/history'
+    | '/child/$name/rewards'
     | '/child/$name'
   id:
     | '__root__'
     | '/'
+    | '/aktiviteter'
+    | '/beloningar'
     | '/login'
     | '/om-sommar'
     | '/onboarding'
@@ -178,11 +213,14 @@ export interface FileRouteTypes {
     | '/child/$name/calendar'
     | '/child/$name/favorites'
     | '/child/$name/history'
+    | '/child/$name/rewards'
     | '/child/$name/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AktiviteterRoute: typeof AktiviteterRoute
+  BeloningarRoute: typeof BeloningarRoute
   LoginRoute: typeof LoginRoute
   OmSommarRoute: typeof OmSommarRoute
   OnboardingRoute: typeof OnboardingRoute
@@ -222,6 +260,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/beloningar': {
+      id: '/beloningar'
+      path: '/beloningar'
+      fullPath: '/beloningar'
+      preLoaderRoute: typeof BeloningarRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/aktiviteter': {
+      id: '/aktiviteter'
+      path: '/aktiviteter'
+      fullPath: '/aktiviteter'
+      preLoaderRoute: typeof AktiviteterRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -255,6 +307,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/child/$name/'
       preLoaderRoute: typeof ChildNameIndexRouteImport
+      parentRoute: typeof ChildNameRoute
+    }
+    '/child/$name/rewards': {
+      id: '/child/$name/rewards'
+      path: '/rewards'
+      fullPath: '/child/$name/rewards'
+      preLoaderRoute: typeof ChildNameRewardsRouteImport
       parentRoute: typeof ChildNameRoute
     }
     '/child/$name/history': {
@@ -293,6 +352,7 @@ interface ChildNameRouteChildren {
   ChildNameCalendarRoute: typeof ChildNameCalendarRoute
   ChildNameFavoritesRoute: typeof ChildNameFavoritesRoute
   ChildNameHistoryRoute: typeof ChildNameHistoryRoute
+  ChildNameRewardsRoute: typeof ChildNameRewardsRoute
   ChildNameIndexRoute: typeof ChildNameIndexRoute
 }
 
@@ -301,6 +361,7 @@ const ChildNameRouteChildren: ChildNameRouteChildren = {
   ChildNameCalendarRoute: ChildNameCalendarRoute,
   ChildNameFavoritesRoute: ChildNameFavoritesRoute,
   ChildNameHistoryRoute: ChildNameHistoryRoute,
+  ChildNameRewardsRoute: ChildNameRewardsRoute,
   ChildNameIndexRoute: ChildNameIndexRoute,
 }
 
@@ -310,6 +371,8 @@ const ChildNameRouteWithChildren = ChildNameRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AktiviteterRoute: AktiviteterRoute,
+  BeloningarRoute: BeloningarRoute,
   LoginRoute: LoginRoute,
   OmSommarRoute: OmSommarRoute,
   OnboardingRoute: OnboardingRoute,

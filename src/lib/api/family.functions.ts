@@ -35,6 +35,18 @@ export const sfListActivities = createServerFn({ method: "POST" }).handler(async
   (await SERVER()).listActivities(),
 );
 
+export const sfFamilySettings = createServerFn({ method: "POST" }).handler(async () =>
+  (await SERVER()).familySettings(),
+);
+
+export const sfListRewards = createServerFn({ method: "POST" }).handler(async () =>
+  (await SERVER()).listRewards(),
+);
+
+export const sfChildPoints = createServerFn({ method: "POST" })
+  .inputValidator(childId)
+  .handler(async ({ data }) => (await SERVER()).childPoints(data.childId));
+
 export const sfCompletionsForDate = createServerFn({ method: "POST" })
   .inputValidator(z.object({ childId: z.string().uuid(), date: z.string() }))
   .handler(async ({ data }) => (await SERVER()).completionsForDate(data.childId, data.date));
@@ -67,7 +79,9 @@ export const sfToggleFavorite = createServerFn({ method: "POST" })
   });
 
 export const sfAddBucketItem = createServerFn({ method: "POST" })
-  .inputValidator(z.object({ childId: z.string().uuid(), title: z.string().min(1), emoji: z.string() }))
+  .inputValidator(
+    z.object({ childId: z.string().uuid(), title: z.string().min(1), emoji: z.string() }),
+  )
   .handler(async ({ data }) => {
     await (await SERVER()).addBucketItem(data.childId, data.title, data.emoji);
   });

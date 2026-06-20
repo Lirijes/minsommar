@@ -53,21 +53,21 @@ function AboutPage() {
           <li className="flex gap-3">
             <span aria-hidden className="text-lg">🌞</span>
             <span>
-              Sommar hjälper barn att hitta roliga och enkla aktiviteter som de flesta kan göra på egen hand.
+              Min Sommar hjälper barn att hitta roliga och enkla aktiviteter som de flesta kan göra på egen hand.
             </span>
           </li>
 
           <li className="flex gap-3">
             <span aria-hidden className="text-lg">🎯</span>
             <span>
-              Barn kan skapa egna mål, samla idéer och inspireras till att göra mer än att bara sitta framför en skärm.
+              Barn kan upptäcka roliga aktiviteter, spara sina favoriter och samla genomförda aktiviteter under sommaren, allt för att inspireras till mer rörelse, lek och äventyr.
             </span>
           </li>
 
           <li className="flex gap-3">
             <span aria-hidden className="text-lg">❤️</span>
             <span>
-              Tanken är att det ska vara enkelt – inga stora projekt eller avancerad planering, bara små idéer som kan göra sommarlovet lite roligare.
+              Tanken är att det ska vara enkelt, inga stora projekt eller avancerad planering, bara små idéer som kan göra sommarlovet lite roligare.
             </span>
           </li>
         </ul>
@@ -114,7 +114,7 @@ function AboutPage() {
           <h3 className="text-lg">Har du en idé?</h3>
         </div>
         <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-          Sommar utvecklas hela tiden. Har du hittat en bugg eller kommit på en funktion som skulle göra appen ännu bättre? Jag tar gärna emot dina tankar!
+          Min Sommar utvecklas hela tiden. Har du hittat en bugg eller kommit på en funktion som skulle göra appen ännu bättre? Jag tar gärna emot dina tankar!
         </p>
         <a
           href={feedbackMailto}
